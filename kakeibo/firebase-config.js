@@ -1,14 +1,10 @@
-// 自動同期を使うときは、Firebase コンソールの「ウェブアプリの設定」を
-// ここに貼り付けてください（手順は SETUP.md）。null のままだと端末内だけで動きます。
+// Firebase（自動同期）の接続設定。
 // ※ この設定値は公開されても問題ない値です。アクセス制限は firestore.rules で行います。
-export const firebaseConfig = null;
-/* 例:
 export const firebaseConfig = {
-  apiKey: "AIza...",
-  authDomain: "xxxx.firebaseapp.com",
-  projectId: "xxxx",
-  storageBucket: "xxxx.appspot.com",
-  messagingSenderId: "...",
-  appId: "...",
+  apiKey: "AIzaSyDaHYqa-j1rv_LatcaP-g77oar0ocOFVmQ",
+  authDomain: "futari-kakeibo-67a88.firebaseapp.com",
+  projectId: "futari-kakeibo-67a88",
+  storageBucket: "futari-kakeibo-67a88.firebasestorage.app",
+  messagingSenderId: "268871607622",
+  appId: "1:268871607622:web:f9af344c15e35c7a84f147",
 };
-*/
