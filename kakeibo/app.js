@@ -467,6 +467,12 @@ function renderSync() {
         <div class="row gap"><input type="text" readonly value="${esc(inviteUrl())}" class="grow" id="inviteUrl">
         <button class="ghost" data-act="copyinvite">コピー</button></div>
         <p class="muted small">招待コード：<code>${esc(sync.hid)}</code></p>` : ''}
+      ${join && join !== sync.hid ? `<div class="notice-box"><p class="small">💌 招待されています。参加すると相手と同じデータを使います。</p>
+        <button class="primary" data-act="join">招待された家計に参加する</button></div>` : n < 2 ? `
+      <details><summary class="small">相手から招待されている場合はこちら</summary>
+        <p class="muted small">招待コード（または招待リンク）を貼り付けて参加すると、相手と同じデータを使うようになります。</p>
+        <div class="row gap"><input id="joinCode" type="text" placeholder="招待コード" class="grow">
+          <button class="ghost" data-act="joincode">参加</button></div></details>` : ''}
       <p><button class="ghost small-btn" data-act="signout">ログアウト</button></p>`;
   }
 }
@@ -483,22 +489,30 @@ $('syncBody').onclick = async (ev) => {
     } else if (act === 'signout') {
       if (confirm('ログアウトしますか？（データはクラウドに残ります）')) await api.signOut();
     } else if (act === 'create') {
+      if (!confirm('相手から招待されている場合は、ここではなく下の「招待コード」から参加してください。\n\n新しく共有を始めますか？')) return;
       const list = state.expenses;
       sync.hid = await api.createHousehold(sync.user.uid, pick(state, META_KEYS), list);
       startRemote(); toast('共有を始めました。相手を招待してください');
     } else if (act === 'join' || act === 'joincode') {
       const hid = act === 'join' ? pref.join : $('joinCode').value.trim().replace(/.*#join=/, '');
       if (!hid) return;
+      if (hid === sync.hid) { savePref({ join: null }); return toast('すでにこの家計に参加しています'); }
+      const switching = remote();
+      if (switching && !confirm('今使っている家計から、招待された家計に移ります。よろしいですか？')) return;
+      // 固定費の自動追加分は移った先でも自動で入るので、それ以外を引き継ぐ
+      const mine = live().filter((e) => !e.fixedId);
       await api.joinHousehold(sync.user.uid, hid);
-      const mine = live();
-      if (mine.length && confirm(`この端末にある支出 ${mine.length}件 も共有データに追加しますか？`)) {
+      if (mine.length && confirm(`${switching ? '今の家計' : 'この端末'}にある支出 ${mine.length}件 も、参加する家計に追加しますか？`)) {
         await api.saveExpenses(hid, mine);
       }
       savePref({ join: null }); sync.hid = hid; startRemote(); toast('参加しました！');
     } else if (act === 'copyinvite') {
       const url = inviteUrl();
-      if (navigator.share) await navigator.share({ text: `ふたりの家計に招待します\n${url}` }).catch(() => {});
-      else { await navigator.clipboard.writeText(url); toast('コピーしました'); }
+      const text = `ふたりの家計に招待します\n${url}\n招待コード：${sync.hid}\n\n` +
+        'リンクを開いて新規登録し「招待された家計に参加する」を押してね。' +
+        'ホーム画面に追加したアプリでは、同じメールアドレスで「ログイン」してね。';
+      if (navigator.share) await navigator.share({ text }).catch(() => {});
+      else { await navigator.clipboard.writeText(text); toast('コピーしました'); }
     }
   } catch (e) {
     sync.error = authMsg(e); console.error(e);
@@ -544,8 +558,9 @@ async function initSync() {
     try {
       const hid = await sync.api.myHousehold(user.uid);
       if (hid) {
-        if (pref.join && pref.join !== hid) toast('すでに別の家計を共有中です');
-        savePref({ join: null }); sync.hid = hid; startRemote();
+        if (pref.join === hid) savePref({ join: null });
+        else if (pref.join) showTab('settings'); // 別の家計に招待されている → 設定画面で参加を確認
+        sync.hid = hid; startRemote();
       } else {
         sync.status = 'nohousehold'; if (pref.join) showTab('settings');
       }
