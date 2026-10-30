@@ -8,6 +8,9 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Roboto:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -28,7 +31,8 @@
       <div id="settleText" class="settle-text"></div>
       <div id="settleSub" class="muted"></div>
       <div class="row gap">
-        <button id="copySettle" class="ghost">精算メッセージをコピー</button>
+        <button id="lineSettle" class="line">LINEで送る</button>
+        <button id="copySettle" class="ghost">コピー</button>
         <button id="toggleSettled" class="primary"></button>
       </div>
     </div>
@@ -109,6 +113,11 @@
       </div>
     </div>
     <div class="card">
+      <h2>iPhone ショートカット</h2>
+      <p class="muted small">ショートカットの「URLを開く」で次のアドレスを開くと、直近の精算日の金額を LINE で送る画面が出ます（手順は SETUP.md）。</p>
+      <div class="row gap"><input id="shortcutUrl" type="text" readonly class="grow"><button id="copyShortcut" class="ghost">コピー</button></div>
+    </div>
+    <div class="card">
       <h2>データ</h2>
       <p class="muted small">バックアップ用です。書き出したファイルを「読み込む」と、同じ支出は重複せずに統合されます。</p>
       <div class="row gap wrap">
@@ -126,6 +135,14 @@
   <button data-tab="settings">⚙︎<span>設定</span></button>
 </nav>
 <div id="toast" class="toast"></div>
+<div id="lineSheet" class="sheet hidden">
+  <div class="card">
+    <h2>精算額を LINE で送る</h2>
+    <pre id="lineSheetText"></pre>
+    <a id="lineSheetGo" class="button line block">LINE を開く</a>
+    <button id="lineSheetClose" class="ghost block">閉じる</button>
+  </div>
+</div>
 <script type="module" src="app.js"></script>
 </body>
 </html>

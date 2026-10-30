@@ -1,4 +1,4 @@
-import { settle, parseReceipt, periodOf, periodRange, fixedDate, periodsBetween } from './calc.js';
+import { settle, parseReceipt, periodOf, periodRange, fixedDate, periodsBetween, addMonths } from './calc.js';
 import { firebaseConfig } from './firebase-config.js';
 
 const KEY = 'kakeibo-v1';
@@ -161,7 +161,7 @@ function renderSummary() {
   document.querySelectorAll('.nameA').forEach((el) => el.textContent = name('A'));
   document.querySelectorAll('.nameB').forEach((el) => el.textContent = name('B'));
   const rows = Object.entries(r.byCategory).sort((a, b) => b[1].total - a[1].total)
-    .map(([c, v]) => `<tr><td>${esc(c)}</td><td>${yen(v.total)}</td><td>${yen(v.burdenA)}</td><td>${yen(v.burdenB)}</td></tr>`).join('');
+    .map(([c, v]) => `<tr><td>${esc(c)}</td><td>${yen(v.total)}</td><td>${yen(v.burdenA)}</td><td>${yen(v.total - Math.round(v.burdenA))}</td></tr>`).join('');
   $('breakdown').innerHTML = rows || '<tr><td colspan="4" class="muted">—</td></tr>';
   $('breakdown').parentElement.querySelector('tfoot')?.remove();
   if (rows) $('breakdown').insertAdjacentHTML('afterend',
@@ -193,6 +193,26 @@ $('toggleSettled').onclick = () => {
   if (state.settled[period]) delete state.settled[period]; else state.settled[period] = today();
   saveMeta();
 };
+// LINE の「送信先を選んで送る」画面を開く
+const lineUrl = (text) => 'https://line.me/R/share?text=' + encodeURIComponent(text);
+$('lineSettle').onclick = () => { location.href = lineUrl(settleMessage(settle(periodExpenses()))); };
+
+// ショートカット用：URL に #line を付けて開くと、直近の精算日の分を LINE で送る画面を出す
+let pendingLine = /(^#|&)line\b/.test(location.hash);
+function maybeSendLine() {
+  if (!pendingLine) return;
+  const ready = sync.status === 'nocfg' || (remote() && sync.metaLoaded && sync.serverLoaded);
+  if (!ready) return;
+  pendingLine = false;
+  period = addMonths(periodOf(today(), state.settleDay), -1); // 直近の精算日（今日を含む）の期間
+  showTab('summary'); render();
+  $('lineSheetText').textContent = settleMessage(settle(periodExpenses()));
+  $('lineSheet').classList.remove('hidden');
+  $('lineSheetGo').href = lineUrl($('lineSheetText').textContent);
+  setTimeout(() => { location.href = $('lineSheetGo').href; }, 600);
+}
+$('lineSheetClose').onclick = () => $('lineSheet').classList.add('hidden');
+
 $('copySettle').onclick = async () => {
   const msg = settleMessage(settle(periodExpenses()));
   try {
@@ -316,8 +336,12 @@ function renderSettings() {
       <span class="yen">${yen(f.amount)}</span>
       <button class="icon" data-delfixed="${f.id}" aria-label="削除">✕</button></li>`).join('')
     || '<li class="muted small">未登録（例：家賃）</li>';
+  $('shortcutUrl').value = location.origin + location.pathname + '#line';
   renderSync();
 }
+$('copyShortcut').onclick = async () => {
+  try { await navigator.clipboard.writeText($('shortcutUrl').value); toast('コピーしました'); } catch {}
+};
 for (const p of ['A', 'B']) $('name' + p).onchange = (ev) => {
   state.names = { ...state.names, [p]: ev.target.value.trim() || DEFAULT.names[p] }; saveMeta();
 };
@@ -504,7 +528,8 @@ function stopRemote() {
 
 async function initSync() {
   const m = location.hash.match(/join=([\w-]+)/);
-  if (m) { savePref({ join: m[1] }); history.replaceState(null, '', location.pathname); }
+  if (m) savePref({ join: m[1] });
+  if (location.hash) history.replaceState(null, '', location.pathname);
   if (!firebaseConfig) return;
   try {
     const { connect } = await import('./sync.js');
@@ -534,6 +559,7 @@ function render() {
   const { payday } = periodRange(period, state.settleDay);
   $('monthLabel').textContent = `${Number(payday.slice(5, 7))}月${Number(payday.slice(8))}日 精算`;
   renderSummary(); renderForm(); renderSettings();
+  maybeSendLine();
 }
 resetForm();
 ensureFixed();

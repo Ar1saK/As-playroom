@@ -24,3 +24,6 @@ assert.equal(fixedDate('2026-10', 1, 25), '2026-10-01');
 assert.equal(periodOf(fixedDate('2026-01', 27, 25), 25), '2026-01');
 assert.deepEqual(periodsBetween('2026-11', '2027-01'), ['2026-11', '2026-12', '2027-01']);
 console.log('period ok');
+r = settle([{ amount: 100000, ratioA: 50, payer: 'A', category: '家賃' }, { amount: 4321, ratioA: 50, payer: 'B', category: '食費' }]);
+assert.equal(r.net, 47840); assert.equal(r.burdenA + r.burdenB, r.total);
+console.log('rounding ok');

@@ -51,7 +51,8 @@ export function settle(expenses) {
   const net = Math.round(paidA - burdenA);
   return {
     total: paidA + paidB, paidA, paidB,
-    burdenA: Math.round(burdenA), burdenB: Math.round(burdenB),
+    // 端数で合計がずれないよう、私の負担は「払った額 − 精算額」から逆算する
+    burdenA: paidA - net, burdenB: paidA + paidB - (paidA - net),
     net, byCategory,
   };
 }
