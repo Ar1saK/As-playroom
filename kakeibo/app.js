@@ -580,4 +580,29 @@ resetForm();
 ensureFixed();
 render();
 initSync();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+// ---------- アプリの更新 ----------
+// 新しい版が公開されたら自動で切り替える（ホーム画面のアプリでも開き直したときに確認する）
+if ('serviceWorker' in navigator) {
+  // 初めて開いたとき（まだ古い版がない）は再読み込みしない
+  let hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) { hadController = true; return; }
+    if (reloading) return;
+    reloading = true; location.reload();
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+}
+// 手動で最新版にする（ログイン状態とデータはそのまま）
+$('forceUpdate').onclick = async () => {
+  $('forceUpdate').disabled = true; toast('更新しています…');
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations() ?? [];
+    await Promise.all(regs.map((r) => r.unregister()));
+    const ks = await caches.keys();
+    await Promise.all(ks.map((k) => caches.delete(k)));
+  } catch {}
+  location.reload();
+};
