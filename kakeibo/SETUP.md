@@ -20,18 +20,23 @@
 
 ## 2. ログイン方法を有効にする
 
-1. 左メニュー「構築」→「Authentication」→「始める」
+> Firebase コンソールのメニューは時々変わります。項目が見つからないときは、画面上部の検索欄に
+> 「Authentication」「Firestore」と入れるか、左メニューの「すべてのプロダクト」から探してください。
+
+1. 左メニュー「セキュリティ（Security）」→「Authentication」→「始める」
+   （古い画面では「構築（Build）」→「Authentication」）
 2. 「Sign-in method」タブ →「メール / パスワード」→ 有効にして保存
 
 ## 3. データベースを作る
 
-1. 左メニュー「構築」→「Firestore Database」→「データベースを作成」
+1. 左メニュー「データベースとストレージ（Databases & Storage）」→「Firestore」→「データベースを作成」
+   （古い画面では「構築（Build）」→「Firestore Database」）
 2. ロケーションは `asia-northeast1（東京）` を選択 →「本番環境モード」で作成
 3. 「ルール」タブを開き、中身をすべて消して、このフォルダの **`firestore.rules` の内容を貼り付け** →「公開」
 
 ## 4. アプリと Firebase をつなぐ
 
-1. プロジェクトの概要（⚙ 歯車）→「プロジェクトの設定」→ 下の「マイアプリ」で **`</>`（ウェブ）** を選ぶ
+1. 左上の ⚙（歯車）→「プロジェクトの設定」→「全般」タブの下にある「マイアプリ」で **`</>`（ウェブ）** を選ぶ
 2. ニックネームを入れて「アプリを登録」（Firebase Hosting のチェックは不要）
 3. 表示される `const firebaseConfig = { ... }` の `{ ... }` の部分をコピー
 4. `kakeibo/firebase-config.js` の `export const firebaseConfig = null;` を次のように書き換える
