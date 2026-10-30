@@ -31,6 +31,7 @@ main { max-width: 560px; margin: 0 auto; padding: 12px 16px calc(90px + env(safe
 .hidden { display: none !important; }
 label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
 input[type=text], input[type=number], input[type=date], input[type=email], input[type=password], select {
+  min-height: 46px;
   width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
   background: var(--bg); color: var(--text); margin-top: 4px; }
 input[type=range] { width: 100%; accent-color: var(--accent); }
@@ -85,3 +86,12 @@ label.inline input { margin: 0; text-align: center; }
   padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 .sheet .card { width: 100%; max-width: 560px; margin: 0 auto; }
 .sheet pre { white-space: pre-wrap; font: inherit; font-size: 14px; background: var(--bg); padding: 12px; border-radius: 10px; margin: 0 0 4px; }
+.notice-box { background: var(--accent-soft); border-radius: 10px; padding: 12px; margin-top: 10px; }
+.notice-box p { margin-top: 0; }
+details { margin-top: 10px; } summary { cursor: pointer; color: var(--accent); }
+/* iPhone の日付欄が横にはみ出さないように（Safari の独自サイズを解除） */
+input[type=date] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; text-align: left; }
+input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+/* ボタンとして使う label（「読み込む」）を普通のボタンと揃える */
+label.button { margin: 0; font-size: 15px; line-height: inherit; color: var(--accent); }
+.wrap > .button, .wrap > button { margin: 0; }
