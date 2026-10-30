@@ -24,6 +24,7 @@
   <!-- 精算 -->
   <section id="tab-summary" class="tab active">
     <div class="card settle">
+      <div id="periodText" class="muted small"></div>
       <div id="settleText" class="settle-text"></div>
       <div id="settleSub" class="muted"></div>
       <div class="row gap">
@@ -31,7 +32,6 @@
         <button id="toggleSettled" class="primary"></button>
       </div>
     </div>
-    <div id="fixedPending" class="card notice hidden"></div>
     <div class="card">
       <h2>内訳</h2>
       <table class="breakdown"><thead><tr><th>カテゴリ</th><th>合計</th><th class="nameA"></th><th class="nameB"></th></tr></thead><tbody id="breakdown"></tbody></table>
@@ -74,12 +74,21 @@
 
   <!-- 設定 -->
   <section id="tab-settings" class="tab">
+    <div class="card" id="syncCard">
+      <h2>自動同期</h2>
+      <div id="syncBody"></div>
+    </div>
     <div class="card">
       <h2>ふたりの名前</h2>
       <div class="row gap">
         <label class="grow">1人目<input id="nameA" type="text"></label>
         <label class="grow">2人目<input id="nameB" type="text"></label>
       </div>
+      <label>この端末を使う人（「払った人」の初期値）<select id="me"></select></label>
+      <label>精算日（毎月）
+        <select id="settleDay"></select>
+      </label>
+      <p class="muted small">例：25日なら、前月25日〜当月24日の支出を25日に精算します。</p>
     </div>
     <div class="card">
       <h2>カテゴリと負担割合</h2>
@@ -89,19 +98,19 @@
     </div>
     <div class="card">
       <h2>毎月の固定費</h2>
-      <p class="muted small">家賃など毎月同じ支出を登録しておくと、月ごとにボタン1つで追加できます。</p>
+      <p class="muted small">家賃など毎月同じ支出を登録しておくと、毎月自動で入ります（金額が違う月は一覧から直せます）。</p>
       <ul id="fixedList" class="list"></ul>
       <div class="fixed-form">
         <select id="fxCat"></select>
         <input id="fxAmount" type="number" inputmode="numeric" placeholder="金額">
         <select id="fxPayer"></select>
-        <input id="fxDay" type="number" min="1" max="28" value="1" title="日">
+        <label class="inline">毎月<input id="fxDay" type="number" min="1" max="28" value="27">日</label>
         <button id="addFixed" class="ghost">追加</button>
       </div>
     </div>
     <div class="card">
       <h2>データ</h2>
-      <p class="muted small">データはこの端末のブラウザに保存されます。もう一人の端末と揃えるときは、書き出したファイルを送って「読み込む」してください（同じ支出は重複しません）。</p>
+      <p class="muted small">バックアップ用です。書き出したファイルを「読み込む」と、同じ支出は重複せずに統合されます。</p>
       <div class="row gap wrap">
         <button id="exportBtn" class="ghost">書き出す</button>
         <label class="ghost button">読み込む<input id="importFile" type="file" accept="application/json" hidden></label>

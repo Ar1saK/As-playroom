@@ -1,5 +1,5 @@
-const CACHE = 'kakeibo-v1';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'calc.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'kakeibo-v2';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'calc.js', 'sync.js', 'firebase-config.js', 'manifest.webmanifest', 'icon.svg'];
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES))));
 self.addEventListener('activate', (e) => e.waitUntil(
   caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))));

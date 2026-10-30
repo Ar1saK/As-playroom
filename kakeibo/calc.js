@@ -2,6 +2,37 @@
 
 export const monthKey = (dateStr) => dateStr.slice(0, 7);
 
+// ---- 精算期間 ----
+// 期間は「精算日のある月」をキーにする。精算日 25 日なら
+// "2026-10" = 2026-09-25 〜 2026-10-24 の支出を 2026-10-25 に精算する。
+const pad = (n) => String(n).padStart(2, '0');
+export function addMonths(key, n) {
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+}
+export function periodOf(dateStr, settleDay) {
+  const d = Number(dateStr.slice(8, 10));
+  return d >= settleDay ? addMonths(monthKey(dateStr), 1) : monthKey(dateStr);
+}
+export function periodRange(key, settleDay) {
+  const prev = addMonths(key, -1);
+  // 精算日 1 日なら前月 1 日〜前月末日
+  const end = settleDay === 1 ? `${prev}-${pad(new Date(...prev.split('-').map(Number), 0).getDate())}`
+    : `${key}-${pad(settleDay - 1)}`;
+  return { start: `${prev}-${pad(settleDay)}`, end, payday: `${key}-${pad(settleDay)}` };
+}
+// 固定費の「毎月 day 日」がその期間内で何日になるか
+export function fixedDate(key, day, settleDay) {
+  return day >= settleDay ? `${addMonths(key, -1)}-${pad(day)}` : `${key}-${pad(day)}`;
+}
+// from 〜 to（両端含む）の期間キーを列挙
+export function periodsBetween(from, to) {
+  const out = [];
+  for (let k = from; k <= to && out.length < 120; k = addMonths(k, 1)) out.push(k);
+  return out;
+}
+
 // 1件の支出について、A(私) の負担額を返す。ratioA は 0〜100(%)。
 export const shareA = (e) => e.amount * e.ratioA / 100;
 
