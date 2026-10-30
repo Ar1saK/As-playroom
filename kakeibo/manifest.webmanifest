@@ -1,0 +1,9 @@
+{
+  "name": "ふたりの家計",
+  "short_name": "家計",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5f3ef",
+  "theme_color": "#2f7d6d",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

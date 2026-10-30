@@ -1,0 +1,568 @@
+import { settle, parseReceipt, periodOf, periodRange, fixedDate, periodsBetween, addMonths } from './calc.js';
+import { firebaseConfig } from './firebase-config.js';
+
+const KEY = 'kakeibo-v1';
+const PREF = 'kakeibo-pref';
+const META_KEYS = ['names', 'categories', 'fixed', 'settled', 'settleDay'];
+const $ = (id) => document.getElementById(id);
+const yen = (n) => '¥' + Math.round(n).toLocaleString('ja-JP');
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+
+const DEFAULT = {
+  names: { A: '私', B: '彼' },
+  categories: [
+    { id: 'rent', name: '家賃', ratioA: 50 },
+    { id: 'food', name: '食費', ratioA: 50 },
+    { id: 'daily', name: '日用品', ratioA: 50 },
+    { id: 'util', name: '光熱費', ratioA: 50 },
+    { id: 'net', name: '通信費', ratioA: 50 },
+    { id: 'eat', name: '外食', ratioA: 50 },
+    { id: 'other', name: 'その他', ratioA: 50 },
+  ],
+  fixed: [],
+  settled: {},
+  settleDay: 25,
+  expenses: [],
+};
+
+// ---------- 状態と保存 ----------
+let state = loadLocal();
+let pref = (() => { try { return JSON.parse(localStorage.getItem(PREF)) || {}; } catch { return {}; } })();
+const sync = { api: null, status: firebaseConfig ? 'loading' : 'nocfg', user: null, hid: null,
+  unsub: null, metaLoaded: false, serverLoaded: false, error: '' };
+let period = periodOf(today(), state.settleDay);
+let form = { catId: state.categories[0]?.id, payer: pref.me || 'A' };
+
+function loadLocal() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s) {
+      // 旧形式（削除IDの一覧）からの移行
+      for (const id of s.deleted || []) {
+        const e = s.expenses?.find((x) => x.id === id); if (e) e.deleted = true;
+      }
+      delete s.deleted;
+      return { ...structuredClone(DEFAULT), ...s };
+    }
+  } catch {}
+  return structuredClone(DEFAULT);
+}
+const remote = () => sync.status === 'on';
+const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k]]));
+function persistLocal() {
+  if (remote()) return;
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { toast('保存に失敗しました'); }
+}
+function savePref(p) { Object.assign(pref, p); try { localStorage.setItem(PREF, JSON.stringify(pref)); } catch {} }
+const fail = (err) => { console.error(err); toast('同期に失敗しました。通信環境を確認してください'); };
+
+// 設定（名前・カテゴリ・固定費など）を保存
+function saveMeta() {
+  if (remote()) sync.api.saveMeta(sync.hid, pick(state, META_KEYS)).catch(fail);
+  else persistLocal();
+  render();
+}
+// 支出を追加・更新（削除は deleted: true にする）
+function putExpenses(list) {
+  for (const e of list) {
+    const i = state.expenses.findIndex((x) => x.id === e.id);
+    if (i >= 0) state.expenses[i] = e; else state.expenses.push(e);
+  }
+  if (remote()) sync.api.saveExpenses(sync.hid, list).catch(fail);
+  else persistLocal();
+  render();
+}
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2400);
+}
+const name = (p) => state.names?.[p] || p;
+const cat = (id) => state.categories.find((c) => c.id === id);
+const live = () => state.expenses.filter((e) => !e.deleted);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+// ---------- 固定費の自動追加 ----------
+// 登録した期間から今の期間まで、まだ入っていない固定費を追加する。
+// ID を「固定費ID+期間」にしているので、2台で同時に追加しても重複しない。
+function ensureFixed() {
+  if (remote() && !(sync.metaLoaded && sync.serverLoaded)) return;
+  const now = periodOf(today(), state.settleDay);
+  const ids = new Set(state.expenses.map((e) => e.id));
+  const add = [];
+  for (const f of state.fixed) {
+    const c = cat(f.catId); if (!c) continue;
+    for (const p of periodsBetween(f.start || now, now)) {
+      const id = `fx-${f.id}-${p}`;
+      if (ids.has(id)) continue;
+      add.push({ id, date: fixedDate(p, f.day, state.settleDay), amount: f.amount, category: c.name,
+        ratioA: c.ratioA, payer: f.payer, memo: '固定費（自動）', fixedId: f.id, createdAt: Date.now(), updatedAt: Date.now() });
+    }
+  }
+  if (add.length) putExpenses(add);
+}
+
+// ---------- タブ ----------
+document.querySelectorAll('.tabbar button').forEach((b) => b.onclick = () => showTab(b.dataset.tab));
+function showTab(t) {
+  document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.tab').forEach((s) => s.classList.toggle('active', s.id === 'tab-' + t));
+  scrollTo(0, 0);
+}
+
+// ---------- 期間切り替え ----------
+$('prevMonth').onclick = () => { period = shift(period, -1); render(); };
+$('nextMonth').onclick = () => { period = shift(period, 1); render(); };
+function shift(key, n) {
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// ---------- 精算画面 ----------
+const periodExpenses = () => live().filter((e) => periodOf(e.date, state.settleDay) === period)
+  .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
+
+function settleMessage(r) {
+  const { start, end, payday } = periodRange(period, state.settleDay);
+  const head = `${md(payday)}の精算（${md(start)}〜${md(end)}）`;
+  if (r.net === 0) return `${head}\nやりとりなしでOK`;
+  const [from, to] = r.net > 0 ? ['B', 'A'] : ['A', 'B'];
+  return `${head}\n${name(from)} → ${name(to)}：${yen(Math.abs(r.net))}\n` +
+    `（合計 ${yen(r.total)} ／ ${name('A')}負担 ${yen(r.burdenA)} ・ ${name('B')}負担 ${yen(r.burdenB)}）`;
+}
+
+function renderSummary() {
+  const list = periodExpenses();
+  const r = settle(list);
+  const done = state.settled?.[period];
+  const { start, end, payday } = periodRange(period, state.settleDay);
+  const box = document.querySelector('.settle');
+  box.classList.toggle('done', !!done);
+  $('periodText').textContent = `${md(payday)} 精算分（${md(start)}〜${md(end)}）`;
+  if (!list.length) {
+    $('settleText').innerHTML = 'まだ支出がありません';
+  } else if (r.net === 0) {
+    $('settleText').innerHTML = 'やりとりなし 🎉';
+  } else {
+    const [from, to] = r.net > 0 ? ['B', 'A'] : ['A', 'B'];
+    $('settleText').innerHTML = `${esc(name(from))} → ${esc(name(to))}<span class="amt">${yen(Math.abs(r.net))}</span>`;
+  }
+  const days = Math.round((new Date(payday) - new Date(today())) / 86400000);
+  $('settleSub').textContent = done ? `✅ ${md(done)} に精算済み`
+    : `合計 ${yen(r.total)} · ` + (days > 0 ? `精算日まであと${days}日` : days === 0 ? '今日が精算日です' : '精算日を過ぎています');
+  $('toggleSettled').textContent = done ? '精算済みを取り消す' : '精算済みにする';
+  $('toggleSettled').className = done ? 'ghost' : 'primary';
+  $('toggleSettled').disabled = !list.length;
+  $('copySettle').disabled = !list.length;
+
+  document.querySelectorAll('.nameA').forEach((el) => el.textContent = name('A'));
+  document.querySelectorAll('.nameB').forEach((el) => el.textContent = name('B'));
+  const rows = Object.entries(r.byCategory).sort((a, b) => b[1].total - a[1].total)
+    .map(([c, v]) => `<tr><td>${esc(c)}</td><td>${yen(v.total)}</td><td>${yen(v.burdenA)}</td><td>${yen(v.total - Math.round(v.burdenA))}</td></tr>`).join('');
+  $('breakdown').innerHTML = rows || '<tr><td colspan="4" class="muted">—</td></tr>';
+  $('breakdown').parentElement.querySelector('tfoot')?.remove();
+  if (rows) $('breakdown').insertAdjacentHTML('afterend',
+    `<tfoot><tr><td>合計</td><td>${yen(r.total)}</td><td>${yen(r.burdenA)}</td><td>${yen(r.burdenB)}</td></tr></tfoot>`);
+  $('paidLine').textContent = list.length ? `立て替え：${name('A')} ${yen(r.paidA)} ／ ${name('B')} ${yen(r.paidB)}` : '';
+
+  $('list').innerHTML = list.map((e) => `
+    <li>
+      <span class="dot ${e.payer}" title="${esc(name(e.payer))}が支払い"></span>
+      <div class="info">
+        <div class="title">${esc(e.category)}${e.memo ? ' · ' + esc(e.memo) : ''}</div>
+        <div class="sub">${md(e.date)} ${esc(name(e.payer))}が支払い · ${esc(name('A'))}${e.ratioA}% : ${esc(name('B'))}${100 - e.ratioA}%</div>
+      </div>
+      <span class="yen">${yen(e.amount)}</span>
+      <button class="icon" data-edit="${e.id}" aria-label="編集">✎</button>
+      <button class="icon" data-del="${e.id}" aria-label="削除">✕</button>
+    </li>`).join('') || '<li class="muted">下の「入力」から追加できます</li>';
+}
+$('list').onclick = (ev) => {
+  const del = ev.target.closest('[data-del]')?.dataset.del;
+  const edit = ev.target.closest('[data-edit]')?.dataset.edit;
+  const e = state.expenses.find((x) => x.id === (del || edit));
+  if (!e) return;
+  if (del && confirm('この支出を削除しますか？')) putExpenses([{ ...e, deleted: true, updatedAt: Date.now() }]);
+  if (edit) startEdit(e);
+};
+$('toggleSettled').onclick = () => {
+  state.settled = { ...state.settled };
+  if (state.settled[period]) delete state.settled[period]; else state.settled[period] = today();
+  saveMeta();
+};
+// LINE の「送信先を選んで送る」画面を開く
+const lineUrl = (text) => 'https://line.me/R/share?text=' + encodeURIComponent(text);
+$('lineSettle').onclick = () => { location.href = lineUrl(settleMessage(settle(periodExpenses()))); };
+
+// ショートカット用：URL に #line を付けて開くと、直近の精算日の分を LINE で送る画面を出す
+let pendingLine = /(^#|&)line\b/.test(location.hash);
+function maybeSendLine() {
+  if (!pendingLine) return;
+  const ready = sync.status === 'nocfg' || (remote() && sync.metaLoaded && sync.serverLoaded);
+  if (!ready) return;
+  pendingLine = false;
+  period = addMonths(periodOf(today(), state.settleDay), -1); // 直近の精算日（今日を含む）の期間
+  showTab('summary'); render();
+  $('lineSheetText').textContent = settleMessage(settle(periodExpenses()));
+  $('lineSheet').classList.remove('hidden');
+  $('lineSheetGo').href = lineUrl($('lineSheetText').textContent);
+  setTimeout(() => { location.href = $('lineSheetGo').href; }, 600);
+}
+$('lineSheetClose').onclick = () => $('lineSheet').classList.add('hidden');
+
+$('copySettle').onclick = async () => {
+  const msg = settleMessage(settle(periodExpenses()));
+  try {
+    if (navigator.share) await navigator.share({ text: msg });
+    else { await navigator.clipboard.writeText(msg); toast('コピーしました'); }
+  } catch {}
+};
+
+// ---------- 入力 ----------
+function renderForm() {
+  if (!cat(form.catId)) form.catId = state.categories[0]?.id;
+  $('catChips').innerHTML = state.categories.map((c) =>
+    `<button type="button" data-cat="${c.id}" class="${c.id === form.catId ? 'on' : ''}">${esc(c.name)}</button>`).join('');
+  $('payerChips').innerHTML = ['A', 'B'].map((p) =>
+    `<button type="button" data-payer="${p}" class="${p === form.payer ? 'on' : ''}">${esc(name(p))}</button>`).join('');
+  updateRatioLabel();
+}
+function updateRatioLabel() {
+  const v = Number($('ratio').value);
+  $('ratioLabel').textContent = `${name('A')} ${v}% : ${name('B')} ${100 - v}%`;
+}
+$('ratio').oninput = updateRatioLabel;
+$('catChips').onclick = (ev) => {
+  const id = ev.target.dataset.cat; if (!id) return;
+  form.catId = id; $('ratio').value = cat(id).ratioA; renderForm();
+};
+$('payerChips').onclick = (ev) => {
+  const p = ev.target.dataset.payer; if (!p) return;
+  form.payer = p; renderForm();
+};
+function resetForm() {
+  $('form').reset(); $('editId').value = '';
+  $('date').value = today();
+  form.payer = pref.me || 'A';
+  $('ratio').value = cat(form.catId)?.ratioA ?? 50;
+  $('submitBtn').textContent = '追加する';
+  $('cancelEdit').classList.add('hidden');
+  $('receiptPreview').classList.add('hidden'); $('ocrStatus').textContent = '';
+  renderForm();
+}
+function startEdit(e) {
+  $('editId').value = e.id; $('amount').value = e.amount; $('date').value = e.date; $('memo').value = e.memo || '';
+  form.catId = state.categories.find((c) => c.name === e.category)?.id ?? form.catId;
+  form.payer = e.payer; $('ratio').value = e.ratioA;
+  $('submitBtn').textContent = '更新する'; $('cancelEdit').classList.remove('hidden');
+  renderForm(); showTab('add');
+}
+$('cancelEdit').onclick = () => { resetForm(); showTab('summary'); };
+$('form').onsubmit = (ev) => {
+  ev.preventDefault();
+  const amount = Math.round(Number($('amount').value));
+  const c = cat(form.catId);
+  if (!(amount > 0) || !c) return toast('金額とカテゴリを入れてください');
+  const data = { amount, date: $('date').value, category: c.name, ratioA: Number($('ratio').value),
+    payer: form.payer, memo: $('memo').value.trim(), updatedAt: Date.now() };
+  const id = $('editId').value;
+  const old = id && state.expenses.find((e) => e.id === id);
+  putExpenses([old ? { ...old, ...data } : { id: uid(), createdAt: Date.now(), ...data }]);
+  period = periodOf(data.date, state.settleDay);
+  toast(old ? '更新しました' : `${c.name} ${yen(amount)} を追加しました`);
+  resetForm(); render(); showTab('summary');
+};
+
+// レシート読み取り（Tesseract.js をその場で読み込む）
+let tesseract;
+function loadTesseract() {
+  return tesseract ??= new Promise((ok, ng) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    s.onload = () => ok(window.Tesseract); s.onerror = () => { tesseract = null; ng(new Error('load')); };
+    document.head.append(s);
+  });
+}
+$('receipt').onchange = async (ev) => {
+  const file = ev.target.files[0]; if (!file) return;
+  ev.target.value = '';
+  $('receiptPreview').src = URL.createObjectURL(file); $('receiptPreview').classList.remove('hidden');
+  const status = $('ocrStatus');
+  status.textContent = '読み取り中…（初回は少し時間がかかります）';
+  try {
+    const T = await loadTesseract();
+    const { data } = await T.recognize(file, 'jpn+eng', {
+      logger: (m) => { if (m.status === 'recognizing text') status.textContent = `読み取り中… ${Math.round(m.progress * 100)}%`; },
+    });
+    const { amount, date } = parseReceipt(data.text);
+    if (amount) $('amount').value = amount;
+    if (date) $('date').value = date;
+    status.textContent = amount
+      ? `合計 ${yen(amount)} を読み取りました。違っていたら直してください。`
+      : '金額を読み取れませんでした。手入力してください。';
+    if (amount) $('amount').focus();
+  } catch {
+    status.textContent = '読み取りに失敗しました（通信環境を確認してください）。手入力もできます。';
+  }
+};
+
+// ---------- 設定 ----------
+function renderSettings() {
+  if (document.activeElement !== $('nameA')) $('nameA').value = state.names.A;
+  if (document.activeElement !== $('nameB')) $('nameB').value = state.names.B;
+  if (!$('settleDay').options.length) $('settleDay').innerHTML =
+    Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}">${i + 1}日</option>`).join('');
+  $('settleDay').value = state.settleDay;
+  $('me').innerHTML = ['A', 'B'].map((p) => `<option value="${p}">${esc(name(p))}</option>`).join('');
+  $('me').value = pref.me || 'A';
+  $('catSettings').innerHTML = state.categories.map((c) => `
+    <div class="cat-row">
+      <strong>${esc(c.name)}</strong>
+      <span class="lbl"><span data-lbl="${c.id}">${esc(name('A'))} ${c.ratioA}% : ${esc(name('B'))} ${100 - c.ratioA}%</span>
+        <button class="icon" data-delcat="${c.id}" aria-label="削除">✕</button></span>
+      <input type="range" min="0" max="100" step="5" value="${c.ratioA}" data-ratio="${c.id}">
+    </div>`).join('');
+  const opts = state.categories.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const keep = $('fxCat').value; $('fxCat').innerHTML = opts; if (cat(keep)) $('fxCat').value = keep;
+  const keepP = $('fxPayer').value;
+  $('fxPayer').innerHTML = ['A', 'B'].map((p) => `<option value="${p}">${esc(name(p))}が払う</option>`).join('');
+  if (keepP) $('fxPayer').value = keepP;
+  $('fixedList').innerHTML = state.fixed.map((f) => `
+    <li><div class="info"><div class="title">${esc(cat(f.catId)?.name || '(削除済み)')}</div>
+      <div class="sub">毎月${f.day}日 · ${esc(name(f.payer))}が支払い · 自動で追加</div></div>
+      <span class="yen">${yen(f.amount)}</span>
+      <button class="icon" data-delfixed="${f.id}" aria-label="削除">✕</button></li>`).join('')
+    || '<li class="muted small">未登録（例：家賃）</li>';
+  $('shortcutUrl').value = location.origin + location.pathname + '#line';
+  renderSync();
+}
+$('copyShortcut').onclick = async () => {
+  try { await navigator.clipboard.writeText($('shortcutUrl').value); toast('コピーしました'); } catch {}
+};
+for (const p of ['A', 'B']) $('name' + p).onchange = (ev) => {
+  state.names = { ...state.names, [p]: ev.target.value.trim() || DEFAULT.names[p] }; saveMeta();
+};
+$('me').onchange = (ev) => { savePref({ me: ev.target.value }); resetForm(); };
+$('settleDay').onchange = (ev) => {
+  const d = Math.min(28, Math.max(1, Math.round(Number(ev.target.value)) || 25));
+  state.settleDay = d; period = periodOf(today(), d); saveMeta();
+};
+$('catSettings').oninput = (ev) => {
+  const id = ev.target.dataset.ratio; if (!id) return;
+  const c = cat(id); c.ratioA = Number(ev.target.value);
+  document.querySelector(`[data-lbl="${id}"]`).textContent = `${name('A')} ${c.ratioA}% : ${name('B')} ${100 - c.ratioA}%`;
+};
+$('catSettings').onchange = (ev) => {
+  if (!ev.target.dataset.ratio) return;
+  saveMeta();
+  if (!$('editId').value) $('ratio').value = cat(form.catId)?.ratioA ?? 50;
+};
+$('catSettings').onclick = (ev) => {
+  const id = ev.target.dataset.delcat; if (!id) return;
+  if (state.categories.length <= 1) return toast('カテゴリは1つ以上必要です');
+  if (confirm(`「${cat(id).name}」を削除しますか？（登録済みの支出は残ります）`)) {
+    state.categories = state.categories.filter((c) => c.id !== id); saveMeta();
+  }
+};
+$('addCat').onclick = () => {
+  const n = $('newCat').value.trim(); if (!n) return;
+  if (state.categories.some((c) => c.name === n)) return toast('同じ名前のカテゴリがあります');
+  state.categories = [...state.categories, { id: uid(), name: n, ratioA: 50 }]; $('newCat').value = ''; saveMeta();
+};
+$('addFixed').onclick = () => {
+  const amount = Math.round(Number($('fxAmount').value));
+  if (!(amount > 0)) return toast('金額を入れてください');
+  const day = Math.min(28, Math.max(1, Number($('fxDay').value) || 1));
+  const start = periodOf(today(), state.settleDay);
+  state.fixed = [...state.fixed, { id: uid(), catId: $('fxCat').value, amount, payer: $('fxPayer').value, day, start }];
+  $('fxAmount').value = ''; saveMeta(); ensureFixed();
+  toast('固定費を登録しました。今月分から毎月自動で入ります');
+};
+$('fixedList').onclick = (ev) => {
+  const id = ev.target.dataset.delfixed;
+  if (id && confirm('この固定費を削除しますか？（もう入った分は残ります）')) {
+    state.fixed = state.fixed.filter((f) => f.id !== id); saveMeta();
+  }
+};
+
+// 書き出し / 読み込み
+function download(filename, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type })); a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$('exportBtn').onclick = () => download(`kakeibo-${today()}.json`, JSON.stringify(state, null, 1), 'application/json');
+$('exportCsv').onclick = () => {
+  const head = '日付,精算日,カテゴリ,金額,払った人,' + name('A') + '負担%,メモ';
+  const rows = live().sort((a, b) => a.date.localeCompare(b.date)).map((e) =>
+    [e.date, periodRange(periodOf(e.date, state.settleDay), state.settleDay).payday, e.category, e.amount,
+      name(e.payer), e.ratioA, e.memo || ''].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
+  download(`kakeibo-${today()}.csv`, '﻿' + [head, ...rows].join('\n'), 'text/csv');
+};
+$('importFile').onchange = async (ev) => {
+  const file = ev.target.files[0]; ev.target.value = ''; if (!file) return;
+  try {
+    const inc = JSON.parse(await file.text());
+    if (!Array.isArray(inc.expenses)) throw 0;
+    for (const id of inc.deleted || []) { const e = inc.expenses.find((x) => x.id === id); if (e) e.deleted = true; }
+    const changed = inc.expenses.filter((e) => {
+      const cur = state.expenses.find((x) => x.id === e.id);
+      return !cur || (e.updatedAt || 0) > (cur.updatedAt || 0);
+    });
+    state.settled = { ...inc.settled, ...state.settled };
+    state.categories = [...state.categories, ...(inc.categories || []).filter((c) => !cat(c.id))];
+    state.fixed = [...state.fixed, ...(inc.fixed || []).filter((f) => !state.fixed.some((x) => x.id === f.id))];
+    saveMeta();
+    if (changed.length) putExpenses(changed);
+    toast(`読み込みました（${changed.length}件を反映）`);
+  } catch { toast('ファイルを読み込めませんでした'); }
+};
+
+// ---------- 自動同期 ----------
+const authMsg = (e) => ({
+  'auth/invalid-credential': 'メールアドレスかパスワードが違います',
+  'auth/wrong-password': 'メールアドレスかパスワードが違います',
+  'auth/user-not-found': 'このメールアドレスは登録されていません',
+  'auth/email-already-in-use': 'このメールアドレスは登録済みです。ログインしてください',
+  'auth/weak-password': 'パスワードは6文字以上にしてください',
+  'auth/invalid-email': 'メールアドレスの形式が正しくありません',
+  'permission-denied': '参加できませんでした（招待コードが違うか、すでに2人います）',
+  'not-found': '招待コードが見つかりません',
+})[e?.code] || 'エラーが発生しました：' + (e?.code || e?.message || e);
+
+function renderSync() {
+  const box = $('syncBody');
+  const join = pref.join;
+  const s = sync.status;
+  const err = sync.error ? `<p class="error small">${esc(sync.error)}</p>` : '';
+  if (s === 'nocfg') {
+    box.innerHTML = `<p class="muted small">まだ同期の設定がされていません。データはこの端末の中だけに保存されています。
+      設定手順は <code>kakeibo/SETUP.md</code> を見てください。</p>`;
+  } else if (s === 'loading') {
+    box.innerHTML = '<p class="muted small">接続中…</p>';
+  } else if (s === 'signedout') {
+    box.innerHTML = `${err}<p class="${join ? 'small' : 'muted small'}">${join
+      ? '💌 招待されています。新規登録（またはログイン）すると参加できます。'
+      : 'ログインすると、ふたりのスマホでデータが自動で同期されます。'}</p>
+      <input id="email" type="email" placeholder="メールアドレス" autocomplete="username">
+      <input id="pw" type="password" placeholder="パスワード（6文字以上）" autocomplete="current-password">
+      <div class="row gap" style="margin-top:8px"><button class="primary grow" data-act="signin">ログイン</button>
+      <button class="ghost" data-act="signup">新規登録</button></div>`;
+  } else if (s === 'nohousehold') {
+    box.innerHTML = `${err}<p class="small">${esc(sync.user.email)} でログイン中</p>
+      ${join ? `<p class="small">招待されています。参加すると相手と同じデータを使います。</p>
+        <button class="primary" data-act="join">招待された家計に参加する</button>` : `
+      <button class="primary" data-act="create">共有を始める（相手を招待する）</button>
+      <p class="muted small" style="margin:12px 0 4px">相手から招待コードをもらった場合：</p>
+      <div class="row gap"><input id="joinCode" type="text" placeholder="招待コード" class="grow">
+        <button class="ghost" data-act="joincode">参加</button></div>`}
+      <p><button class="ghost small-btn" data-act="signout">ログアウト</button></p>`;
+  } else if (s === 'on') {
+    const n = state.members?.length || 1;
+    box.innerHTML = `${err}<p class="small">✅ 自動同期中（${esc(sync.user.email)}）· メンバー ${n}/2人</p>
+      ${n < 2 ? `<p class="muted small">相手にこのリンクを送って、開いてもらってください：</p>
+        <div class="row gap"><input type="text" readonly value="${esc(inviteUrl())}" class="grow" id="inviteUrl">
+        <button class="ghost" data-act="copyinvite">コピー</button></div>
+        <p class="muted small">招待コード：<code>${esc(sync.hid)}</code></p>` : ''}
+      <p><button class="ghost small-btn" data-act="signout">ログアウト</button></p>`;
+  }
+}
+const inviteUrl = () => location.origin + location.pathname + '#join=' + sync.hid;
+
+$('syncBody').onclick = async (ev) => {
+  const act = ev.target.dataset.act; if (!act) return;
+  const api = sync.api; sync.error = '';
+  ev.target.disabled = true;
+  try {
+    if (act === 'signin' || act === 'signup') {
+      const email = $('email').value.trim(), pw = $('pw').value;
+      if (act === 'signin') await api.signIn(email, pw); else await api.signUp(email, pw);
+    } else if (act === 'signout') {
+      if (confirm('ログアウトしますか？（データはクラウドに残ります）')) await api.signOut();
+    } else if (act === 'create') {
+      const list = state.expenses;
+      sync.hid = await api.createHousehold(sync.user.uid, pick(state, META_KEYS), list);
+      startRemote(); toast('共有を始めました。相手を招待してください');
+    } else if (act === 'join' || act === 'joincode') {
+      const hid = act === 'join' ? pref.join : $('joinCode').value.trim().replace(/.*#join=/, '');
+      if (!hid) return;
+      await api.joinHousehold(sync.user.uid, hid);
+      const mine = live();
+      if (mine.length && confirm(`この端末にある支出 ${mine.length}件 も共有データに追加しますか？`)) {
+        await api.saveExpenses(hid, mine);
+      }
+      savePref({ join: null }); sync.hid = hid; startRemote(); toast('参加しました！');
+    } else if (act === 'copyinvite') {
+      const url = inviteUrl();
+      if (navigator.share) await navigator.share({ text: `ふたりの家計に招待します\n${url}` }).catch(() => {});
+      else { await navigator.clipboard.writeText(url); toast('コピーしました'); }
+    }
+  } catch (e) {
+    sync.error = authMsg(e); console.error(e);
+  } finally {
+    ev.target.disabled = false; renderSync();
+  }
+};
+
+function startRemote() {
+  sync.unsub?.();
+  sync.status = 'on'; sync.metaLoaded = sync.serverLoaded = false;
+  state = { ...structuredClone(DEFAULT), expenses: [] };
+  sync.unsub = sync.api.subscribe(sync.hid, (meta) => {
+    state = { ...state, ...pick({ ...DEFAULT, ...meta }, META_KEYS), members: meta.members };
+    if (!sync.metaLoaded) period = periodOf(today(), state.settleDay);
+    sync.metaLoaded = true; ensureFixed(); render();
+  }, (list, fromServer) => {
+    state.expenses = list;
+    if (fromServer) sync.serverLoaded = true;
+    ensureFixed(); render();
+  }, (e) => { sync.error = authMsg(e); render(); });
+}
+function stopRemote() {
+  sync.unsub?.(); sync.unsub = null; sync.hid = null;
+  state = loadLocal(); period = periodOf(today(), state.settleDay);
+}
+
+async function initSync() {
+  const m = location.hash.match(/join=([\w-]+)/);
+  if (m) savePref({ join: m[1] });
+  if (location.hash) history.replaceState(null, '', location.pathname);
+  if (!firebaseConfig) return;
+  try {
+    const { connect } = await import('./sync.js');
+    sync.api = await connect(firebaseConfig);
+  } catch (e) {
+    console.error(e); sync.status = 'nocfg'; sync.error = ''; render();
+    return toast('同期サービスに接続できませんでした');
+  }
+  sync.api.onAuth(async (user) => {
+    sync.user = user; sync.error = '';
+    if (!user) { stopRemote(); sync.status = 'signedout'; if (pref.join) showTab('settings'); render(); return; }
+    try {
+      const hid = await sync.api.myHousehold(user.uid);
+      if (hid) {
+        if (pref.join && pref.join !== hid) toast('すでに別の家計を共有中です');
+        savePref({ join: null }); sync.hid = hid; startRemote();
+      } else {
+        sync.status = 'nohousehold'; if (pref.join) showTab('settings');
+      }
+    } catch (e) { sync.error = authMsg(e); sync.status = 'nohousehold'; }
+    render();
+  });
+}
+
+// ---------- 描画 ----------
+function render() {
+  const { payday } = periodRange(period, state.settleDay);
+  $('monthLabel').textContent = `${Number(payday.slice(5, 7))}月${Number(payday.slice(8))}日 精算`;
+  renderSummary(); renderForm(); renderSettings();
+  maybeSendLine();
+}
+resetForm();
+ensureFixed();
+render();
+initSync();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

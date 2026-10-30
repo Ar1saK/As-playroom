@@ -1,0 +1,30 @@
+rules_version = '2';
+// ふたりの家計：家計（household）のメンバー（最大2人）だけが読み書きできる
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    // 自分がどの家計に入っているか（本人だけ）
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /households/{hid} {
+      function isMember() { return signedIn() && request.auth.uid in resource.data.members; }
+
+      allow read: if isMember();
+      allow create: if signedIn() && request.resource.data.members == [request.auth.uid];
+      // メンバーは設定を変更できる（メンバー構成は変えられない）
+      allow update: if (isMember() && request.resource.data.members == resource.data.members)
+        // 招待コードを知っている人が、2人目として自分だけを追加する
+        || (signedIn() && resource.data.members.size() < 2
+            && request.resource.data.members == resource.data.members.concat([request.auth.uid])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']));
+
+      match /expenses/{eid} {
+        allow read, write: if signedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/households/$(hid)).data.members;
+      }
+    }
+  }
+}

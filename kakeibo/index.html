@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2f7d6d">
+<title>ふたりの家計</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Roboto:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>ふたりの家計</h1>
+  <div class="month">
+    <button id="prevMonth" aria-label="前の月">‹</button>
+    <span id="monthLabel"></span>
+    <button id="nextMonth" aria-label="次の月">›</button>
+  </div>
+</header>
+
+<main>
+  <!-- 精算 -->
+  <section id="tab-summary" class="tab active">
+    <div class="card settle">
+      <div id="periodText" class="muted small"></div>
+      <div id="settleText" class="settle-text"></div>
+      <div id="settleSub" class="muted"></div>
+      <div class="row gap">
+        <button id="lineSettle" class="line">LINEで送る</button>
+        <button id="copySettle" class="ghost">コピー</button>
+        <button id="toggleSettled" class="primary"></button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>内訳</h2>
+      <table class="breakdown"><thead><tr><th>カテゴリ</th><th>合計</th><th class="nameA"></th><th class="nameB"></th></tr></thead><tbody id="breakdown"></tbody></table>
+      <div id="paidLine" class="muted small"></div>
+    </div>
+    <div class="card">
+      <h2>支出一覧</h2>
+      <ul id="list" class="list"></ul>
+    </div>
+  </section>
+
+  <!-- 入力 -->
+  <section id="tab-add" class="tab">
+    <div class="card">
+      <label class="receipt-btn">
+        📷 レシートを撮る / 選ぶ
+        <input id="receipt" type="file" accept="image/*" capture="environment" hidden>
+      </label>
+      <div id="ocrStatus" class="muted small"></div>
+      <img id="receiptPreview" class="preview hidden" alt="">
+    </div>
+    <form id="form" class="card">
+      <input type="hidden" id="editId">
+      <label>金額（円）<input id="amount" type="number" inputmode="numeric" min="1" required></label>
+      <label>カテゴリ</label>
+      <div id="catChips" class="chips"></div>
+      <label>払った人</label>
+      <div id="payerChips" class="chips"></div>
+      <label>負担割合 <span id="ratioLabel" class="muted"></span>
+        <input id="ratio" type="range" min="0" max="100" step="5">
+      </label>
+      <label>日付<input id="date" type="date" required></label>
+      <label>メモ<input id="memo" type="text" placeholder="例：イオン"></label>
+      <div class="row gap">
+        <button type="button" id="cancelEdit" class="ghost hidden">キャンセル</button>
+        <button type="submit" class="primary grow" id="submitBtn">追加する</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- 設定 -->
+  <section id="tab-settings" class="tab">
+    <div class="card" id="syncCard">
+      <h2>自動同期</h2>
+      <div id="syncBody"></div>
+    </div>
+    <div class="card">
+      <h2>ふたりの名前</h2>
+      <div class="row gap">
+        <label class="grow">1人目<input id="nameA" type="text"></label>
+        <label class="grow">2人目<input id="nameB" type="text"></label>
+      </div>
+      <label>この端末を使う人（「払った人」の初期値）<select id="me"></select></label>
+      <label>精算日（毎月）
+        <select id="settleDay"></select>
+      </label>
+      <p class="muted small">例：25日なら、前月25日〜当月24日の支出を25日に精算します。</p>
+    </div>
+    <div class="card">
+      <h2>カテゴリと負担割合</h2>
+      <p class="muted small">スライダーは1人目の負担割合です。新しく入力する支出に使われます（過去の支出は変わりません）。</p>
+      <div id="catSettings"></div>
+      <div class="row gap"><input id="newCat" type="text" placeholder="新しいカテゴリ" class="grow"><button id="addCat" class="ghost">追加</button></div>
+    </div>
+    <div class="card">
+      <h2>毎月の固定費</h2>
+      <p class="muted small">家賃など毎月同じ支出を登録しておくと、毎月自動で入ります（金額が違う月は一覧から直せます）。</p>
+      <ul id="fixedList" class="list"></ul>
+      <div class="fixed-form">
+        <select id="fxCat"></select>
+        <input id="fxAmount" type="number" inputmode="numeric" placeholder="金額">
+        <select id="fxPayer"></select>
+        <label class="inline">毎月<input id="fxDay" type="number" min="1" max="28" value="27">日</label>
+        <button id="addFixed" class="ghost">追加</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>iPhone ショートカット</h2>
+      <p class="muted small">ショートカットの「URLを開く」で次のアドレスを開くと、直近の精算日の金額を LINE で送る画面が出ます（手順は SETUP.md）。</p>
+      <div class="row gap"><input id="shortcutUrl" type="text" readonly class="grow"><button id="copyShortcut" class="ghost">コピー</button></div>
+    </div>
+    <div class="card">
+      <h2>データ</h2>
+      <p class="muted small">バックアップ用です。書き出したファイルを「読み込む」と、同じ支出は重複せずに統合されます。</p>
+      <div class="row gap wrap">
+        <button id="exportBtn" class="ghost">書き出す</button>
+        <label class="ghost button">読み込む<input id="importFile" type="file" accept="application/json" hidden></label>
+        <button id="exportCsv" class="ghost">CSV</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav class="tabbar">
+  <button data-tab="summary" class="active">📊<span>精算</span></button>
+  <button data-tab="add">＋<span>入力</span></button>
+  <button data-tab="settings">⚙︎<span>設定</span></button>
+</nav>
+<div id="toast" class="toast"></div>
+<div id="lineSheet" class="sheet hidden">
+  <div class="card">
+    <h2>精算額を LINE で送る</h2>
+    <pre id="lineSheetText"></pre>
+    <a id="lineSheetGo" class="button line block">LINE を開く</a>
+    <button id="lineSheetClose" class="ghost block">閉じる</button>
+  </div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
