@@ -46,6 +46,7 @@ let form = { catId: state.categories[0]?.id, payer: pref.me || 'A', book: pref.b
   groupId: null, tabCat: '', split: 'half' };
 let view = pref.view || 'monthly'; // 精算画面：毎月 / たまる
 let groupView = null;              // 開いているグループ（'none' = グループなし）
+let groupListOpen = false;         // 「過去のグループ」を開いているか
 let hist = { book: 'all', group: '', q: '' };
 
 function loadLocal() {
@@ -265,6 +266,25 @@ function dateRange(list) {
   const f = (d) => `${d.slice(0, 4)}/${md(d)}`;
   return ds[0] === ds[ds.length - 1] ? f(ds[0]) : `${f(ds[0])}〜${f(ds[ds.length - 1])}`;
 }
+// グループが「終わった」か：自分で終わりにした / 最後の入力から1か月たった（自動）。
+// 「進行中に戻す」と closed: false になり、自動では終わらなくなる。
+const AUTO_CLOSE_DAYS = 30;
+function groupLastDate(id) {
+  let last = '';
+  for (const e of tabItems()) if (e.groupId === id && e.date > last) last = e.date;
+  return last;
+}
+function groupStatus(g) {
+  if (g.closed === true) return 'closed';
+  if (g.closed === false) return 'open';
+  const last = groupLastDate(g.id) || new Date(g.createdAt || Date.now()).toISOString().slice(0, 10);
+  return (new Date(today()) - new Date(last)) / 86400000 > AUTO_CLOSE_DAYS ? 'auto' : 'open';
+}
+const isOpenGroup = (g) => groupStatus(g) === 'open';
+function setGroupClosed(id, closed) {
+  state.groups = state.groups.map((g) => g.id === id ? { ...g, closed } : g); saveMeta();
+  toast(closed ? 'グループを終わりにしました' : '進行中に戻しました');
+}
 const groupEmoji = (n) => (n.match(/^\p{Extended_Pictographic}️?/u) || ['📁'])[0];
 function renderTab() {
   $('monthlyView').classList.toggle('hidden', view !== 'monthly');
@@ -281,17 +301,30 @@ function renderTab() {
   $('tabSub').textContent = !items.length ? '「入力」で「たまる精算」を選んで追加できます'
     : r.net === 0 ? `立て替え ${items.length}件` : `${name(r.net > 0 ? 'B' : 'A')}の借り · 立て替え ${items.length}件`;
   // グループごとの合計（最近使った順）
-  const rows = [...state.groups.map((g) => ({ id: g.id, name: g.name, list: items.filter((e) => e.groupId === g.id) })),
-    { id: 'none', name: '📦 グループなし', list: items.filter((e) => !group(e.groupId)) }]
-    .filter((g) => g.list.length || g.id !== 'none')
-    .sort((a, b) => (b.list[0]?.date || '').localeCompare(a.list[0]?.date || ''));
-  $('groupList').innerHTML = rows.map((g) => {
+  const rowOf = (g) => ({ id: g.id, name: g.name, list: items.filter((e) => e.groupId === g.id) });
+  const recent = (a, b) => (b.list[0]?.date || '').localeCompare(a.list[0]?.date || '');
+  const open = state.groups.filter(isOpenGroup).map(rowOf).sort(recent);
+  const none = { id: 'none', name: '📦 グループなし', list: items.filter((e) => !group(e.groupId)) };
+  if (none.list.length) open.push(none);
+  const past = state.groups.filter((g) => !isOpenGroup(g)).map(rowOf).sort(recent);
+  const li = (g) => {
     const em = g.id === 'none' ? '📦' : groupEmoji(g.name);
     const label = g.id === 'none' ? 'グループなし' : g.name.replace(/^\p{Extended_Pictographic}️?\s*/u, '');
     return `<li class="clickable" data-group="${g.id}"><span class="emoji">${em}</span>
       <div class="info"><div class="title">${esc(label)}</div><div class="sub">${g.list.length ? `${dateRange(g.list)} · ${g.list.length}件` : 'まだありません'}</div></div>
       <span class="yen">${yen(g.list.reduce((t, e) => t + e.amount, 0))}</span></li>`;
-  }).join('') || '<li class="muted small">設定画面や入力画面でグループを作れます（例：🏝️ 沖縄旅行）</li>';
+  };
+  const years = [];
+  for (const g of past) {
+    const y = (g.list[0]?.date || today()).slice(0, 4);
+    if (years[years.length - 1]?.y !== y) years.push({ y, list: [] });
+    years[years.length - 1].list.push(g);
+  }
+  $('groupList').innerHTML = (open.map(li).join('') || '<li class="muted small">進行中のグループはありません（入力画面の「＋ 新しく作る」で作れます）</li>') +
+    (past.length ? `<li class="past"><details${groupListOpen ? ' open' : ''} id="pastGroups"><summary>過去のグループ（${past.length}）</summary>
+      ${years.map(({ y, list }) => `<div class="month-h"><span>${y}年</span><span>${yen(list.reduce((t, g) => t + g.list.reduce((s, e) => s + e.amount, 0), 0))}</span></div>
+        <ul class="list">${list.map(li).join('')}</ul>`).join('')}</details></li>` : '');
+  $('pastGroups')?.addEventListener('toggle', (ev) => { groupListOpen = ev.target.open; });
   $('tabRecent').innerHTML = items.slice(0, 5).map((e) => itemRow(e, { showBook: true })).join('') || '<li class="muted">まだありません</li>';
 }
 $('groupList').onclick = (ev) => {
@@ -299,6 +332,7 @@ $('groupList').onclick = (ev) => {
   groupView = id; render(); scrollTo(0, 0);
 };
 $('groupBack').onclick = () => { groupView = null; render(); };
+$('gdToggle').onclick = () => { const g = group(groupView); if (g) setGroupClosed(g.id, isOpenGroup(g)); };
 $('toHistory').onclick = () => { hist = { book: 'tab', group: '', q: '' }; $('histSearch').value = ''; showTab('history'); render(); };
 
 function renderGroupDetail(items) {
@@ -306,6 +340,10 @@ function renderGroupDetail(items) {
   const list = items.filter((e) => groupView === 'none' ? !group(e.groupId) : e.groupId === groupView);
   const r = settle(list);
   $('gdTitle').textContent = g ? g.name : '📦 グループなし';
+  const st = g ? groupStatus(g) : 'none';
+  $('gdState').textContent = st === 'closed' ? '終わったグループ' : st === 'auto' ? `1か月入力がないので自動で終わりにしました` : '';
+  $('gdToggle').classList.toggle('hidden', !g);
+  $('gdToggle').textContent = st === 'open' ? 'このグループを終わりにする' : '進行中に戻す';
   $('gdRange').textContent = list.length ? `${dateRange(list)} · ${list.length}件` : 'まだありません';
   $('gdTotal').innerHTML = `<span class="amt">${yen(r.total)}</span>`;
   $('gdPer').textContent = `ひとりあたり ${yen(r.total / 2)}`;
@@ -331,7 +369,9 @@ function renderHistory() {
   for (const b of document.querySelectorAll('#histSeg button')) b.classList.toggle('on', b.dataset.hist === hist.book);
   $('histGroup').classList.toggle('hidden', hist.book === 'monthly');
   $('histGroup').innerHTML = `<option value="">グループ：すべて</option><option value="none">グループなし</option>` +
-    state.groups.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
+    [['進行中', state.groups.filter(isOpenGroup)], ['過去のグループ', state.groups.filter((g) => !isOpenGroup(g))]]
+      .filter(([, gs]) => gs.length)
+      .map(([l, gs]) => `<optgroup label="${l}">${gs.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join('')}</optgroup>`).join('');
   $('histGroup').value = hist.group;
   const q = hist.q.toLowerCase();
   const list = live().filter((e) => {
@@ -368,7 +408,8 @@ function renderForm() {
     `<button type="button" data-payer="${p}" class="${p === form.payer ? 'on' : ''}">${esc(name(p))}</button>`).join('');
   if (form.groupId && !group(form.groupId)) form.groupId = null;
   $('groupChips').innerHTML = `<button type="button" data-group="" class="${!form.groupId ? 'on' : ''}">なし</button>` +
-    state.groups.map((g) => `<button type="button" data-group="${g.id}" class="${g.id === form.groupId ? 'on' : ''}">${esc(g.name)}</button>`).join('') +
+    state.groups.filter((g) => isOpenGroup(g) || g.id === form.groupId)
+      .map((g) => `<button type="button" data-group="${g.id}" class="${g.id === form.groupId ? 'on' : ''}">${esc(g.name)}</button>`).join('') +
     '<button type="button" data-newgroup="1">＋ 新しく作る</button>';
   $('tabCatChips').innerHTML = TAB_CATS.map((c) =>
     `<button type="button" data-tabcat="${c.name}" class="${c.name === form.tabCat ? 'on' : ''}">${c.emoji} ${c.name}</button>`).join('');
@@ -474,9 +515,13 @@ function addGroup(n) {
   return g;
 }
 function renderGroupSettings() {
-  $('groupSettings').innerHTML = state.groups.map((g) => {
+  const sorted = [...state.groups].sort((a, b) => isOpenGroup(b) - isOpenGroup(a) || groupLastDate(b.id).localeCompare(groupLastDate(a.id)));
+  $('groupSettings').innerHTML = sorted.map((g) => {
     const n = tabItems().filter((e) => e.groupId === g.id).length;
-    return `<li><div class="info"><div class="title">${esc(g.name)}</div><div class="sub">${n}件</div></div>
+    const st = groupStatus(g);
+    return `<li><div class="info"><div class="title">${esc(g.name)}</div>
+      <div class="sub">${n}件 · ${st === 'open' ? '進行中' : st === 'auto' ? '終わった（自動）' : '終わった'}</div></div>
+      <button class="ghost small-btn" data-togglegroup="${g.id}">${st === 'open' ? '終わりにする' : '戻す'}</button>
       <button class="icon" data-renamegroup="${g.id}" aria-label="名前を変える">✎</button>
       <button class="icon" data-delgroup="${g.id}" aria-label="削除">✕</button></li>`;
   }).join('') || '<li class="muted small">まだありません</li>';
@@ -486,7 +531,8 @@ $('addGroup').onclick = () => {
   if (addGroup(n)) { $('newGroup').value = ''; toast('グループを作りました'); }
 };
 $('groupSettings').onclick = (ev) => {
-  const rn = ev.target.dataset.renamegroup, del = ev.target.dataset.delgroup;
+  const rn = ev.target.dataset.renamegroup, del = ev.target.dataset.delgroup, tg = ev.target.dataset.togglegroup;
+  if (tg) setGroupClosed(tg, isOpenGroup(group(tg)));
   if (rn) {
     const g = group(rn); const n = prompt('新しい名前', g.name)?.trim(); if (!n || n === g.name) return;
     state.groups = state.groups.map((x) => x.id === rn ? { ...x, name: n } : x); saveMeta();

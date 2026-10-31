@@ -1,4 +1,4 @@
-const CACHE = 'kakeibo-v7';
+const CACHE = 'kakeibo-v8';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'calc.js', 'sync.js', 'firebase-config.js', 'manifest.webmanifest', 'icon.svg'];
 // 新しい版はすぐに有効にする（開いている画面は app.js 側で再読み込みする）
 self.addEventListener('install', (e) => {

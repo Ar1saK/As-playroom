@@ -113,3 +113,7 @@ label.button { margin: 0; font-size: 15px; line-height: inherit; color: var(--ac
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
 .plus { color: var(--accent); } .minus { color: var(--b); }
 .invisible { visibility: hidden; }
+.list li.past { display: block; padding-top: 4px; }
+.list li.past summary { color: var(--accent); font-size: 14px; padding: 6px 0; }
+.list li.past .month-h { margin-top: 8px; }
+#groupSettings .small-btn { margin: 0; padding: 4px 10px; }

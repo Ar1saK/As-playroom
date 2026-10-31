@@ -72,6 +72,7 @@
         <div class="card settle">
           <div id="gdTitle" class="settle-text"></div>
           <div id="gdRange" class="muted small"></div>
+          <div id="gdState" class="muted small"></div>
           <div class="muted small" style="margin-top:8px">使った合計</div>
           <div id="gdTotal" class="settle-text"></div>
           <div id="gdPer" class="muted small"></div>
@@ -90,6 +91,7 @@
           <h2>明細</h2>
           <ul id="gdList" class="list"></ul>
         </div>
+        <button id="gdToggle" class="ghost block"></button>
       </div>
     </div>
   </section>
@@ -175,7 +177,8 @@
     </div>
     <div class="card">
       <h2>たまる精算のグループ</h2>
-      <p class="muted small">旅行などのまとまりです。名前の先頭に絵文字を入れると一覧で見やすくなります（例：🏝️ 沖縄旅行）。</p>
+      <p class="muted small">旅行などのまとまりです。名前の先頭に絵文字を入れると一覧で見やすくなります（例：🏝️ 沖縄旅行）。
+        終わったグループは入力画面に出なくなります（1か月入力がないと自動で終わりになります）。</p>
       <ul id="groupSettings" class="list"></ul>
       <div class="row gap"><input id="newGroup" type="text" placeholder="新しいグループ" class="grow"><button id="addGroup" class="ghost">追加</button></div>
     </div>
