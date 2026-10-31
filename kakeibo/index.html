@@ -26,6 +26,8 @@
 <main>
   <!-- 精算 -->
   <section id="tab-summary" class="tab active">
+    <div class="seg" id="viewSeg"><button data-view="monthly">毎月の精算</button><button data-view="tab">たまる精算</button></div>
+    <div id="monthlyView">
     <div class="card settle">
       <div id="periodText" class="muted small"></div>
       <div id="settleText" class="settle-text"></div>
@@ -45,6 +47,62 @@
       <h2>支出一覧</h2>
       <ul id="list" class="list"></ul>
     </div>
+    </div>
+
+    <!-- たまる精算 -->
+    <div id="tabView" class="hidden">
+      <div id="tabHome">
+        <div class="card settle">
+          <div class="muted small">いまの貸し借り</div>
+          <div id="tabText" class="settle-text"></div>
+          <div id="tabSub" class="muted small"></div>
+        </div>
+        <div class="card">
+          <h2>グループ</h2>
+          <ul id="groupList" class="list"></ul>
+        </div>
+        <div class="card">
+          <h2>最近の立て替え</h2>
+          <ul id="tabRecent" class="list"></ul>
+          <button id="toHistory" class="ghost block">履歴をすべて見る</button>
+        </div>
+      </div>
+      <div id="groupDetail" class="hidden">
+        <button id="groupBack" class="back">‹ グループ一覧</button>
+        <div class="card settle">
+          <div id="gdTitle" class="settle-text"></div>
+          <div id="gdRange" class="muted small"></div>
+          <div class="muted small" style="margin-top:8px">使った合計</div>
+          <div id="gdTotal" class="settle-text"></div>
+          <div id="gdPer" class="muted small"></div>
+        </div>
+        <div class="card">
+          <h2>なにに使った？</h2>
+          <div id="gdBar" class="bar"></div>
+          <table class="breakdown"><tbody id="gdCats"></tbody></table>
+        </div>
+        <div class="card">
+          <h2>ふたりの支払い</h2>
+          <table class="breakdown"><thead><tr><th></th><th>払った</th><th>負担</th></tr></thead><tbody id="gdPeople"></tbody></table>
+          <div id="gdNet" class="muted small" style="margin-top:6px"></div>
+        </div>
+        <div class="card">
+          <h2>明細</h2>
+          <ul id="gdList" class="list"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 履歴 -->
+  <section id="tab-history" class="tab">
+    <div class="seg" id="histSeg"><button data-hist="all">すべて</button><button data-hist="tab">たまる精算</button><button data-hist="monthly">毎月の精算</button></div>
+    <div class="row gap">
+      <input id="histSearch" type="text" placeholder="🔍 検索" class="grow">
+      <select id="histGroup" class="grow"></select>
+    </div>
+    <div id="histCount" class="muted small" style="margin:8px 2px"></div>
+    <div id="historyList"></div>
   </section>
 
   <!-- 入力 -->
@@ -57,18 +115,33 @@
       <div id="ocrStatus" class="muted small"></div>
       <img id="receiptPreview" class="preview hidden" alt="">
     </div>
-    <form id="form" class="card">
+    <form id="form" class="card book-monthly">
       <input type="hidden" id="editId">
+      <label style="margin-top:0">入れる先</label>
+      <div class="seg" id="bookSeg"><button type="button" data-book="monthly">毎月の精算</button><button type="button" data-book="tab">たまる精算</button></div>
+      <label class="only-tab">なにに<input id="title" type="text" placeholder="例：沖縄旅行 ホテル"></label>
       <label>金額（円）<input id="amount" type="number" inputmode="numeric" min="1" required></label>
-      <label>カテゴリ</label>
-      <div id="catChips" class="chips"></div>
+      <div class="only-monthly">
+        <label>カテゴリ</label>
+        <div id="catChips" class="chips"></div>
+      </div>
+      <div class="only-tab">
+        <label>グループ（なしでもOK）</label>
+        <div id="groupChips" class="chips"></div>
+        <label>なにに使った？（なしでもOK）</label>
+        <div id="tabCatChips" class="chips"></div>
+      </div>
       <label>払った人</label>
       <div id="payerChips" class="chips"></div>
-      <label>負担割合 <span id="ratioLabel" class="muted"></span>
+      <div class="only-tab">
+        <label>だれの分</label>
+        <div id="splitChips" class="chips"></div>
+      </div>
+      <label id="ratioWrap">負担割合 <span id="ratioLabel" class="muted"></span>
         <input id="ratio" type="range" min="0" max="100" step="5">
       </label>
       <label>日付<input id="date" type="date" required></label>
-      <label>メモ<input id="memo" type="text" placeholder="例：イオン"></label>
+      <label class="only-monthly">メモ<input id="memo" type="text" placeholder="例：イオン"></label>
       <div class="row gap">
         <button type="button" id="cancelEdit" class="ghost hidden">キャンセル</button>
         <button type="submit" class="primary grow" id="submitBtn">追加する</button>
@@ -99,6 +172,12 @@
       <p class="muted small">スライダーは1人目の負担割合です。新しく入力する支出に使われます（過去の支出は変わりません）。</p>
       <div id="catSettings"></div>
       <div class="row gap"><input id="newCat" type="text" placeholder="新しいカテゴリ" class="grow"><button id="addCat" class="ghost">追加</button></div>
+    </div>
+    <div class="card">
+      <h2>たまる精算のグループ</h2>
+      <p class="muted small">旅行などのまとまりです。名前の先頭に絵文字を入れると一覧で見やすくなります（例：🏝️ 沖縄旅行）。</p>
+      <ul id="groupSettings" class="list"></ul>
+      <div class="row gap"><input id="newGroup" type="text" placeholder="新しいグループ" class="grow"><button id="addGroup" class="ghost">追加</button></div>
     </div>
     <div class="card">
       <h2>毎月の固定費</h2>
@@ -137,6 +216,7 @@
 <nav class="tabbar">
   <button data-tab="summary" class="active">📊<span>精算</span></button>
   <button data-tab="add">＋<span>入力</span></button>
+  <button data-tab="history">🕘<span>履歴</span></button>
   <button data-tab="settings">⚙︎<span>設定</span></button>
 </nav>
 <div id="toast" class="toast"></div>
