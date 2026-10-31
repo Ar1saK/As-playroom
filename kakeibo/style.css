@@ -117,3 +117,5 @@ label.button { margin: 0; font-size: 15px; line-height: inherit; color: var(--ac
 .list li.past summary { color: var(--accent); font-size: 14px; padding: 6px 0; }
 .list li.past .month-h { margin-top: 8px; }
 #groupSettings .small-btn { margin: 0; padding: 4px 10px; }
+.brand { letter-spacing: 0.08em; }
+.tag.monthly { letter-spacing: 0.06em; font-size: 10px; }
