@@ -10,7 +10,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 
-// たまる精算の「なにに使った？」（任意）
+// GOCHIMACHI（たまる精算）の「なにに使った？」（任意）
 const TAB_CATS = [
   { name: 'ごはん', emoji: '🍽️' }, { name: '宿', emoji: '🏨' }, { name: '移動', emoji: '🚗' },
   { name: '買い物', emoji: '🛍️' }, { name: 'レジャー', emoji: '🎡' }, { name: 'プレゼント', emoji: '🎁' }, { name: 'その他', emoji: '📦' },
@@ -108,7 +108,7 @@ const tabCatEmoji = (n) => TAB_CATS.find((c) => c.name === n)?.emoji || '📦';
 function itemRow(e, { showBook = false } = {}) {
   const g = isTab(e) && group(e.groupId);
   const title = isTab(e) ? esc(e.title || e.category || '立て替え') : esc(e.category) + (e.memo ? ' · ' + esc(e.memo) : '');
-  const tag = showBook ? (isTab(e) ? (g ? `<span class="tag">${esc(g.name)}</span>` : '') : '<span class="tag monthly">毎月</span>') : '';
+  const tag = showBook ? (isTab(e) ? (g ? `<span class="tag">${esc(g.name)}</span>` : '') : '<span class="tag monthly">TSUKIICHI</span>') : '';
   return `<li>
       <span class="dot ${e.payer}" title="${esc(name(e.payer))}が支払い"></span>
       <div class="info">
@@ -251,7 +251,7 @@ $('copySettle').onclick = async () => {
   } catch {}
 };
 
-// ---------- たまる精算 ----------
+// ---------- GOCHIMACHI（たまる精算） ----------
 for (const b of document.querySelectorAll('#viewSeg button')) b.onclick = () => {
   view = b.dataset.view; groupView = null; savePref({ view }); render(); scrollTo(0, 0);
 };
@@ -298,7 +298,7 @@ function renderTab() {
   if (groupView) return renderGroupDetail(items);
 
   $('tabText').innerHTML = items.length ? balanceHtml(r.net) : 'まだ立て替えがありません';
-  $('tabSub').textContent = !items.length ? '「入力」で「たまる精算」を選んで追加できます'
+  $('tabSub').textContent = !items.length ? '「入力」で「GOCHIMACHI」を選んで追加できます'
     : r.net === 0 ? `立て替え ${items.length}件` : `${name(r.net > 0 ? 'B' : 'A')}の借り · 立て替え ${items.length}件`;
   // グループごとの合計（最近使った順）
   const rowOf = (g) => ({ id: g.id, name: g.name, list: items.filter((e) => e.groupId === g.id) });
@@ -664,7 +664,7 @@ $('exportBtn').onclick = () => download(`kakeibo-${today()}.json`, JSON.stringif
 $('exportCsv').onclick = () => {
   const head = '種類,日付,精算日,グループ,カテゴリ,内容,金額,払った人,' + name('A') + '負担%';
   const rows = live().sort((a, b) => a.date.localeCompare(b.date)).map((e) =>
-    [isTab(e) ? 'たまる精算' : '毎月の精算', e.date,
+    [isTab(e) ? 'GOCHIMACHI' : 'TSUKIICHI', e.date,
       isTab(e) ? '' : periodRange(periodOf(e.date, state.settleDay), state.settleDay).payday,
       isTab(e) ? group(e.groupId)?.name || '' : '', e.category || '', isTab(e) ? e.title || '' : e.memo || '',
       e.amount, name(e.payer), e.ratioA].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));

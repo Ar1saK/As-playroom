@@ -26,7 +26,7 @@
 <main>
   <!-- 精算 -->
   <section id="tab-summary" class="tab active">
-    <div class="seg" id="viewSeg"><button data-view="monthly">毎月の精算</button><button data-view="tab">たまる精算</button></div>
+    <div class="seg" id="viewSeg"><button data-view="monthly" class="brand">TSUKIICHI</button><button data-view="tab" class="brand">GOCHIMACHI</button></div>
     <div id="monthlyView">
     <div class="card settle">
       <div id="periodText" class="muted small"></div>
@@ -49,7 +49,7 @@
     </div>
     </div>
 
-    <!-- たまる精算 -->
+    <!-- GOCHIMACHI（たまる精算） -->
     <div id="tabView" class="hidden">
       <div id="tabHome">
         <div class="card settle">
@@ -98,7 +98,7 @@
 
   <!-- 履歴 -->
   <section id="tab-history" class="tab">
-    <div class="seg" id="histSeg"><button data-hist="all">すべて</button><button data-hist="tab">たまる精算</button><button data-hist="monthly">毎月の精算</button></div>
+    <div class="seg" id="histSeg"><button data-hist="all">すべて</button><button data-hist="monthly" class="brand">TSUKIICHI</button><button data-hist="tab" class="brand">GOCHIMACHI</button></div>
     <div class="row gap">
       <input id="histSearch" type="text" placeholder="🔍 検索" class="grow">
       <select id="histGroup" class="grow"></select>
@@ -120,7 +120,7 @@
     <form id="form" class="card book-monthly">
       <input type="hidden" id="editId">
       <label style="margin-top:0">入れる先</label>
-      <div class="seg" id="bookSeg"><button type="button" data-book="monthly">毎月の精算</button><button type="button" data-book="tab">たまる精算</button></div>
+      <div class="seg" id="bookSeg"><button type="button" data-book="monthly" class="brand">TSUKIICHI</button><button type="button" data-book="tab" class="brand">GOCHIMACHI</button></div>
       <label class="only-tab">なにに<input id="title" type="text" placeholder="例：沖縄旅行 ホテル"></label>
       <label>金額（円）<input id="amount" type="number" inputmode="numeric" min="1" required></label>
       <div class="only-monthly">
@@ -176,7 +176,7 @@
       <div class="row gap"><input id="newCat" type="text" placeholder="新しいカテゴリ" class="grow"><button id="addCat" class="ghost">追加</button></div>
     </div>
     <div class="card">
-      <h2>たまる精算のグループ</h2>
+      <h2>GOCHIMACHI のグループ</h2>
       <p class="muted small">旅行などのまとまりです。名前の先頭に絵文字を入れると一覧で見やすくなります（例：🏝️ 沖縄旅行）。
         終わったグループは入力画面に出なくなります（1か月入力がないと自動で終わりになります）。</p>
       <ul id="groupSettings" class="list"></ul>
