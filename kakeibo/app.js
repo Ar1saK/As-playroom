@@ -1,6 +1,7 @@
 import { settle, parseReceipt, periodOf, periodRange, fixedDate, periodsBetween, addMonths,
   parseEtcRows, lastEtcEnd, addDays } from './calc.js';
 import { firebaseConfig } from './firebase-config.js';
+import { getKey, setKey, readEtcPhotos } from './reader.js';
 
 const KEY = 'kakeibo-v1';
 const PREF = 'kakeibo-pref';
@@ -531,6 +532,10 @@ function openEtc() {
   const last = etcLast();
   $('etcLast').textContent = last ? `${md(last)} まで済み` : 'まだ記録がありません';
   $('etcText').value = '';
+  const auto = !!getKey();
+  $('etcAuto').classList.toggle('hidden', !auto);
+  $('etcManual').open = !auto;
+  $('etcAutoStatus').textContent = '何枚でも選べます。印は付けなくて大丈夫です。';
   showEtcStep(1); showTab('etc');
 }
 function showEtcStep(n) {
@@ -552,6 +557,18 @@ $('etcPaste').onclick = async () => {
   } catch { toast('貼り付けできませんでした。下の欄に長押しで貼り付けてください'); $('etcText').focus(); }
 };
 $('etcParse').onclick = () => loadEtc($('etcText').value);
+$('etcPhotos').onchange = async (ev) => {
+  const files = [...ev.target.files]; ev.target.value = '';
+  if (!files.length) return;
+  const status = $('etcAutoStatus');
+  try {
+    const { text, unreadable } = await readEtcPhotos(files, (m) => { status.textContent = m; });
+    status.textContent = unreadable ? `読み取れなかった行が ${unreadable}件 ありました` : '読み取りました';
+    loadEtc(text);
+  } catch (e) {
+    console.error(e); status.textContent = e.message || '読み取りに失敗しました';
+  }
+};
 function loadEtc(text) {
   const { rows: all, bad } = parseEtcRows(text);
   if (!all.length) return toast('ETCの行が見つかりませんでした。Claude の返事をそのまま貼り付けてください');
@@ -644,6 +661,21 @@ $('etcAdd').onclick = () => {
   toast(amount ? `${title} ${yen(amount)} を追加しました` : `${title} を対象なしで記録しました`);
   etc = null; view = 'tab'; groupView = null; savePref({ view });
   render(); showTab('summary');
+};
+
+// ---------- API キー ----------
+function renderApiKey() {
+  const k = getKey();
+  $('apiKeyState').textContent = k ? `✅ 登録済み（…${k.slice(-4)}）` : '未登録';
+  $('clearApiKey').classList.toggle('hidden', !k);
+}
+$('saveApiKey').onclick = () => {
+  const k = $('apiKey').value.trim();
+  if (!/^sk-ant-/.test(k)) return toast('「sk-ant-」で始まるキーを貼り付けてください');
+  setKey(k); $('apiKey').value = ''; renderApiKey(); toast('この端末に保存しました');
+};
+$('clearApiKey').onclick = () => {
+  if (confirm('この端末から API キーを削除しますか？')) { setKey(''); renderApiKey(); }
 };
 
 // ---------- グループの管理 ----------
@@ -984,7 +1016,7 @@ function render() {
   if (!state.groups) state.groups = [];
   document.querySelector('header .month').classList.toggle('invisible',
     view !== 'monthly' || !$('tab-summary').classList.contains('active'));
-  renderSummary(); renderTab(); renderHistory(); renderForm(); renderSettings(); renderGroupSettings();
+  renderSummary(); renderTab(); renderHistory(); renderForm(); renderSettings(); renderGroupSettings(); renderApiKey();
   maybeSendLine();
 }
 resetForm();

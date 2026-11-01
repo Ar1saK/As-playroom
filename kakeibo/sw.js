@@ -1,5 +1,5 @@
-const CACHE = 'kakeibo-v10';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'calc.js', 'sync.js', 'firebase-config.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'kakeibo-v11';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'calc.js', 'reader.js', 'sync.js', 'firebase-config.js', 'manifest.webmanifest', 'icon.svg'];
 // 新しい版はすぐに有効にする（開いている画面は app.js 側で再読み込みする）
 self.addEventListener('install', (e) => {
   self.skipWaiting();

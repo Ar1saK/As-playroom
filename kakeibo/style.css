@@ -155,3 +155,5 @@ label.button { margin: 0; font-size: 15px; line-height: inherit; color: var(--ac
 .chk.on { background: var(--accent); }
 .rows li.off .title, .rows li.off .yen { color: var(--muted); }
 #openEtc { margin: 12px 0 0; }
+#etcManual summary { color: var(--accent); padding: 10px 0; cursor: pointer; }
+#etcManual:not([open]) { padding-bottom: 4px; }

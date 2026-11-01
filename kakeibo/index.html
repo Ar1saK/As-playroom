@@ -161,7 +161,13 @@
         <div class="muted small">前回の精算</div>
         <div id="etcLast" class="etc-last"></div>
       </div>
-      <div class="card" style="padding:4px 16px">
+      <div class="card" id="etcAuto">
+        <label class="receipt-btn">📷 ETC料金リストの写真を選ぶ
+          <input id="etcPhotos" type="file" accept="image/*" multiple hidden></label>
+        <div id="etcAutoStatus" class="muted small" style="margin-top:8px">何枚でも選べます。印は付けなくて大丈夫です。</div>
+      </div>
+      <details id="etcManual" class="card" style="padding:4px 16px">
+        <summary class="small">Claude アプリで読み取る</summary>
         <div class="step"><span class="num">1</span><div class="grow">
           <div class="t">頼む文をコピー</div><div class="s">Claude アプリに写真と一緒に送ります</div>
           <button class="primary" id="etcCopy">📋 頼む文をコピー</button></div></div>
@@ -172,7 +178,7 @@
           <button class="ghost" id="etcPaste">📥 返事を貼り付け</button>
           <textarea id="etcText" rows="4" placeholder="うまく貼り付けられないときは、ここに長押しで貼り付けて「読み込む」"></textarea>
           <button class="ghost small-btn" id="etcParse">読み込む</button></div></div>
-      </div>
+      </details>
     </div>
     <!-- ② カレンダー -->
     <div id="etcStep2" class="hidden">
@@ -250,6 +256,15 @@
       <h2>iPhone ショートカット</h2>
       <p class="muted small">ショートカットの「URLを開く」で次のアドレスを開くと、直近の精算日の金額を LINE で送る画面が出ます（手順は SETUP.md）。</p>
       <div class="row gap"><input id="shortcutUrl" type="text" readonly class="grow"><button id="copyShortcut" class="ghost">コピー</button></div>
+    </div>
+    <div class="card">
+      <h2>写真の自動読み取り（ETC）</h2>
+      <p class="muted small">Anthropic の API キーを登録すると、ETC料金リストの写真を選ぶだけで読み取れます（1回 1円前後）。
+        キーはこの端末の中にだけ保存され、相手のスマホやリポジトリには送られません。</p>
+      <div id="apiKeyState" class="small"></div>
+      <div class="row gap" style="margin-top:6px"><input id="apiKey" type="password" placeholder="sk-ant-..." class="grow" autocomplete="off">
+        <button id="saveApiKey" class="ghost">保存</button></div>
+      <button id="clearApiKey" class="ghost small-btn danger">この端末から削除</button>
     </div>
     <div class="card">
       <h2>データ</h2>
