@@ -566,7 +566,8 @@ $('etcPhotos').onchange = async (ev) => {
     status.textContent = unreadable ? `読み取れなかった行が ${unreadable}件 ありました` : '読み取りました';
     loadEtc(text);
   } catch (e) {
-    console.error(e); status.textContent = e.message || '読み取りに失敗しました';
+    console.error(e); status.textContent = (e.message || '読み取りに失敗しました') + '。下の「Claude アプリで読み取る」でも続けられます';
+    $('etcManual').open = true;
   }
 };
 function loadEtc(text) {
