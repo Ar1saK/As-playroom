@@ -119,3 +119,41 @@ label.button { margin: 0; font-size: 15px; line-height: inherit; color: var(--ac
 #groupSettings .small-btn { margin: 0; padding: 4px 10px; }
 .brand { letter-spacing: 0.08em; }
 .tag.monthly { letter-spacing: 0.06em; font-size: 10px; }
+/* 高速・ETC */
+.etc-last { font-weight: 700; font-size: 17px; margin-top: 2px; }
+.step { display: flex; gap: 10px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.step:last-child { border-bottom: 0; }
+.num { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex: none; }
+.step .t { font-weight: 500; font-size: 14px; }
+.step .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.step button { margin-top: 8px; font-size: 14px; padding: 8px 12px; }
+.step textarea { width: 100%; margin-top: 8px; font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--bg); color: var(--text); }
+.cal-head { display: flex; justify-content: space-between; align-items: center; font-weight: 500; margin-bottom: 6px; }
+.cal-head button { border: 0; background: none; color: var(--accent); font-size: 22px; padding: 0 10px; }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; font-size: 13px; }
+.cal .h { color: var(--muted); font-size: 11px; padding: 2px 0; }
+.cal .d { padding: 6px 0 4px; border-radius: 10px; position: relative; min-height: 42px; border: 1px solid transparent;
+  background: none; color: var(--text); font-size: 13px; }
+.cal .d small { display: block; font-size: 9px; color: var(--muted); margin-top: 1px; white-space: nowrap; }
+.cal .d.etc { background: var(--bg); border-color: var(--line); cursor: pointer; }
+.cal .d.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.cal .d.on small { color: #e2f0ec; }
+.cal .d.mk::after { content: ""; position: absolute; top: 4px; right: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--b); }
+.cal .d.done { color: var(--muted); opacity: .5; }
+.legend { font-size: 11px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.legend .lg-etc { background: var(--bg); border: 1px solid var(--line); }
+.legend .lg-on { background: var(--accent); }
+.legend .lg-mk { background: var(--b); border-radius: 50%; }
+.sum { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; }
+.sum b { color: var(--accent); font-size: 24px; }
+.rows li { padding: 8px 0; cursor: pointer; }
+.chk { width: 20px; height: 20px; border-radius: 5px; border: 2px solid var(--accent); flex: none; display: flex;
+  align-items: center; justify-content: center; color: #fff; font-size: 12px; }
+.chk.on { background: var(--accent); }
+.rows li.off .title, .rows li.off .yen { color: var(--muted); }
+#openEtc { margin: 12px 0 0; }
+#etcManual summary { color: var(--accent); padding: 10px 0; cursor: pointer; }
+#etcManual:not([open]) { padding-bottom: 4px; }

@@ -1,5 +1,7 @@
-import { settle, parseReceipt, periodOf, periodRange, fixedDate, periodsBetween, addMonths } from './calc.js';
+import { settle, parseReceipt, periodOf, periodRange, fixedDate, periodsBetween, addMonths,
+  parseEtcRows, lastEtcEnd, addDays } from './calc.js';
 import { firebaseConfig } from './firebase-config.js';
+import { getKey, setKey, readEtcPhotos } from './reader.js';
 
 const KEY = 'kakeibo-v1';
 const PREF = 'kakeibo-pref';
@@ -145,7 +147,7 @@ function ensureFixed() {
 // ---------- タブ ----------
 document.querySelectorAll('.tabbar button').forEach((b) => b.onclick = () => showTab(b.dataset.tab));
 function showTab(t) {
-  document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === (t === 'etc' ? 'add' : t)));
   document.querySelectorAll('.tab').forEach((s) => s.classList.toggle('active', s.id === 'tab-' + t));
   document.querySelector('header .month').classList.toggle('invisible', t !== 'summary' || view !== 'monthly');
   scrollTo(0, 0);
@@ -507,6 +509,176 @@ $('form').onsubmit = (ev) => {
   resetForm(); render(); showTab('summary');
 };
 
+// ---------- 高速・ETC ----------
+// Claude アプリに写真を読み取ってもらい、返事を貼り付けて、ふたりで出かけた日をカレンダーで選ぶ。
+const ETC_PROMPT = [
+  '添付した写真は車のETC料金リストです。',
+  '写っているすべての行を、1行ずつ次の形式だけで書き出してください。',
+  '形式：YYYY/MM/DD HH:MM 金額（数字だけ）',
+  '例：2026/09/02 14:33 670',
+  '・写真どうしで重なっている行もそのまま書いてください',
+  '・読めない文字は ? にしてください',
+  '・説明や合計は書かないでください',
+].join('\n');
+let etc = null; // { last, rows, from, to, excluded, bad, sel:Set(index), off:Set(index), month, payer, split }
+
+function etcLast() { return lastEtcEnd(tabItems()); }
+function etcPrevSettings() {
+  const prev = tabItems().filter((e) => e.etc || /高速|ETC|etc/.test(e.title || '')).sort(byDateDesc)[0];
+  return { payer: prev?.payer || pref.me || 'A', split: 'half' };
+}
+function openEtc() {
+  etc = { step: 1 };
+  const last = etcLast();
+  $('etcLast').textContent = last ? `${md(last)} まで済み` : 'まだ記録がありません';
+  $('etcText').value = '';
+  const auto = !!getKey();
+  $('etcAuto').classList.toggle('hidden', !auto);
+  $('etcManual').open = !auto;
+  $('etcAutoStatus').textContent = '何枚でも選べます。印は付けなくて大丈夫です。';
+  showEtcStep(1); showTab('etc');
+}
+function showEtcStep(n) {
+  for (const i of [1, 2, 3]) $('etcStep' + i).classList.toggle('hidden', i !== n);
+  $('etcBack').classList.toggle('hidden', n === 3);
+  scrollTo(0, 0);
+}
+$('openEtc').onclick = openEtc;
+$('etcBack').onclick = () => showTab('add');
+$('etcCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText(ETC_PROMPT); toast('コピーしました。Claude アプリに写真と一緒に送ってください'); }
+  catch { $('etcText').value = ETC_PROMPT; toast('コピーできませんでした。下の文を長押しでコピーしてください'); }
+};
+$('etcPaste').onclick = async () => {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (!t.trim()) return toast('コピーした内容が空です');
+    $('etcText').value = t; loadEtc(t);
+  } catch { toast('貼り付けできませんでした。下の欄に長押しで貼り付けてください'); $('etcText').focus(); }
+};
+$('etcParse').onclick = () => loadEtc($('etcText').value);
+$('etcPhotos').onchange = async (ev) => {
+  const files = [...ev.target.files]; ev.target.value = '';
+  if (!files.length) return;
+  const status = $('etcAutoStatus');
+  try {
+    const { text, unreadable } = await readEtcPhotos(files, (m) => { status.textContent = m; });
+    status.textContent = unreadable ? `読み取れなかった行が ${unreadable}件 ありました` : '読み取りました';
+    loadEtc(text);
+  } catch (e) {
+    console.error(e); status.textContent = (e.message || '読み取りに失敗しました') + '。下の「Claude アプリで読み取る」でも続けられます';
+    $('etcManual').open = true;
+  }
+};
+function loadEtc(text) {
+  const { rows: all, bad } = parseEtcRows(text);
+  if (!all.length) return toast('ETCの行が見つかりませんでした。Claude の返事をそのまま貼り付けてください');
+  const last = etcLast();
+  const rows = all.filter((r) => !last || r.date > last);
+  if (!rows.length) return toast(`${md(last)} より後の行がありませんでした`);
+  const prev = etcPrevSettings();
+  etc = { last, rows, excluded: all.length - rows.length, bad, sel: new Set(), off: new Set(),
+    from: last ? addDays(last, 1) : rows[0].date, to: rows[rows.length - 1].date,
+    month: rows[0].date.slice(0, 7), payer: prev.payer, split: prev.split };
+  $('etcInfo').textContent = `✨ ${all.length}件 読み取り` +
+    (etc.excluded ? ` · ${md(last)} 以前の ${etc.excluded}件 は外しました` : '') +
+    (bad.length ? ` · 読めなかった行 ${bad.length}件` : '');
+  if (bad.length) toast(`読めなかった行が ${bad.length}件 あります。必要なら Claude に聞き直してください`);
+  renderEtcCal(); showEtcStep(2);
+}
+const etcDays = () => {
+  const m = {};
+  etc.rows.forEach((r, i) => (m[r.date] ??= []).push(i));
+  return m;
+};
+function renderEtcCal() {
+  const days = etcDays();
+  const [y, mo] = etc.month.split('-').map(Number);
+  $('etcMonth').textContent = `${y}年${mo}月`;
+  const months = [...new Set(etc.rows.map((r) => r.date.slice(0, 7)))];
+  $('etcPrev').style.visibility = etc.month > months[0] ? 'visible' : 'hidden';
+  $('etcNext').style.visibility = etc.month < months[months.length - 1] ? 'visible' : 'hidden';
+  const marked = new Set(tabItems().map((e) => e.date));
+  const first = new Date(y, mo - 1, 1).getDay(), n = new Date(y, mo, 0).getDate();
+  let html = ['日', '月', '火', '水', '木', '金', '土'].map((w) => `<div class="h">${w}</div>`).join('');
+  html += '<div></div>'.repeat(first);
+  for (let d = 1; d <= n; d++) {
+    const date = `${etc.month}-${String(d).padStart(2, '0')}`;
+    const idx = days[date];
+    const on = idx && idx.some((i) => etc.sel.has(i));
+    const cls = ['d', idx ? 'etc' : '', on ? 'on' : '', idx && marked.has(date) ? 'mk' : '', etc.last && date <= etc.last ? 'done' : ''].join(' ');
+    const sum = idx ? idx.reduce((t, i) => t + etc.rows[i].amount, 0) : 0;
+    html += idx ? `<button type="button" class="${cls}" data-day="${date}">${d}<small>${yen(sum)}</small></button>`
+      : `<div class="${cls}">${d}${etc.last && date === etc.last ? '<small>済</small>' : ''}</div>`;
+  }
+  $('etcCal').innerHTML = html;
+  const chosen = [...etc.sel].filter((i) => !etc.off.has(i));
+  const daysOn = new Set([...etc.sel].map((i) => etc.rows[i].date));
+  $('etcSelCount').textContent = `${daysOn.size}日 · ${chosen.length}件`;
+  $('etcSelTotal').textContent = yen(chosen.reduce((t, i) => t + etc.rows[i].amount, 0));
+}
+$('etcCal').onclick = (ev) => {
+  const date = ev.target.closest('[data-day]')?.dataset.day; if (!date) return;
+  const idx = etcDays()[date];
+  const on = idx.some((i) => etc.sel.has(i));
+  for (const i of idx) { if (on) etc.sel.delete(i); else etc.sel.add(i); etc.off.delete(i); }
+  renderEtcCal();
+};
+$('etcPrev').onclick = () => { etc.month = shift(etc.month, -1); renderEtcCal(); };
+$('etcNext').onclick = () => { etc.month = shift(etc.month, 1); renderEtcCal(); };
+$('etcRedo').onclick = () => { $('etcText').value = ''; showEtcStep(1); };
+$('etcToConfirm').onclick = () => { renderEtcConfirm(); showEtcStep(3); };
+$('etcBack2').onclick = () => { renderEtcCal(); showEtcStep(2); };
+function renderEtcConfirm() {
+  const list = [...etc.sel].sort((a, b) => a - b);
+  $('etcRows').innerHTML = list.map((i) => {
+    const r = etc.rows[i], off = etc.off.has(i);
+    return `<li data-row="${i}" class="${off ? 'off' : ''}"><span class="chk ${off ? '' : 'on'}">${off ? '' : '✓'}</span>
+      <div class="info"><div class="title">${md(r.date)} ${r.time}</div></div><span class="yen">${yen(r.amount)}</span></li>`;
+  }).join('') || '<li class="muted small">選んだ日はありません（この期間は対象なしとして記録できます）</li>';
+  const total = list.filter((i) => !etc.off.has(i)).reduce((t, i) => t + etc.rows[i].amount, 0);
+  $('etcTotal').textContent = yen(total);
+  $('etcTitle').textContent = `タイトル：高速(${md(etc.from)}〜${md(etc.to)}) · 次回は ${md(addDays(etc.to, 1))} から`;
+  $('etcPayer').innerHTML = ['A', 'B'].map((p) =>
+    `<button type="button" data-payer="${p}" class="${p === etc.payer ? 'on' : ''}">${esc(name(p))}</button>`).join('');
+  $('etcSplit').innerHTML = [['half', 'ふたりで半分'], ['A', `${name('A')}が全額`], ['B', `${name('B')}が全額`]]
+    .map(([k, l]) => `<button type="button" data-split="${k}" class="${k === etc.split ? 'on' : ''}">${esc(l)}</button>`).join('');
+  $('etcAdd').textContent = total ? 'GOCHIMACHI に追加' : 'この期間は対象なしで記録';
+}
+$('etcRows').onclick = (ev) => {
+  const i = Number(ev.target.closest('[data-row]')?.dataset.row); if (Number.isNaN(i)) return;
+  if (etc.off.has(i)) etc.off.delete(i); else etc.off.add(i);
+  renderEtcConfirm();
+};
+$('etcPayer').onclick = (ev) => { const p = ev.target.dataset.payer; if (p) { etc.payer = p; renderEtcConfirm(); } };
+$('etcSplit').onclick = (ev) => { const k = ev.target.dataset.split; if (k) { etc.split = k; renderEtcConfirm(); } };
+$('etcAdd').onclick = () => {
+  const rows = [...etc.sel].filter((i) => !etc.off.has(i)).sort((a, b) => a - b).map((i) => etc.rows[i]);
+  const amount = rows.reduce((t, r) => t + r.amount, 0);
+  const title = `高速(${md(etc.from)}〜${md(etc.to)})`;
+  putExpenses([{ id: uid(), createdAt: Date.now(), updatedAt: Date.now(), book: 'tab', title, amount,
+    date: etc.to, payer: etc.payer, ratioA: SPLITS[etc.split], groupId: null, category: '移動', memo: '',
+    etc: { from: etc.from, to: etc.to, rows } }]);
+  toast(amount ? `${title} ${yen(amount)} を追加しました` : `${title} を対象なしで記録しました`);
+  etc = null; view = 'tab'; groupView = null; savePref({ view });
+  render(); showTab('summary');
+};
+
+// ---------- API キー ----------
+function renderApiKey() {
+  const k = getKey();
+  $('apiKeyState').textContent = k ? `✅ 登録済み（…${k.slice(-4)}）` : '未登録';
+  $('clearApiKey').classList.toggle('hidden', !k);
+}
+$('saveApiKey').onclick = () => {
+  const k = $('apiKey').value.trim();
+  if (!/^sk-ant-/.test(k)) return toast('「sk-ant-」で始まるキーを貼り付けてください');
+  setKey(k); $('apiKey').value = ''; renderApiKey(); toast('この端末に保存しました');
+};
+$('clearApiKey').onclick = () => {
+  if (confirm('この端末から API キーを削除しますか？')) { setKey(''); renderApiKey(); }
+};
+
 // ---------- グループの管理 ----------
 function addGroup(n) {
   if (state.groups.some((g) => g.name === n)) { toast('同じ名前のグループがあります'); return null; }
@@ -845,7 +1017,7 @@ function render() {
   if (!state.groups) state.groups = [];
   document.querySelector('header .month').classList.toggle('invisible',
     view !== 'monthly' || !$('tab-summary').classList.contains('active'));
-  renderSummary(); renderTab(); renderHistory(); renderForm(); renderSettings(); renderGroupSettings();
+  renderSummary(); renderTab(); renderHistory(); renderForm(); renderSettings(); renderGroupSettings(); renderApiKey();
   maybeSendLine();
 }
 resetForm();

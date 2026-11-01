@@ -85,3 +85,48 @@ export function parseReceipt(text) {
   if (m) date = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
   return { amount, date };
 }
+
+// ---- 高速・ETC ----
+export function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+// Claude の返事（「2026/09/02 14:33 670」の行）から ETC の行を取り出す。
+// 重なった行（同じ日時・金額）は1つにまとめる。読めなかった行は bad に入れる。
+export function parseEtcRows(text) {
+  const norm = text.replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFEE0))
+    .replace(/[：]/g, ':').replace(/[／]/g, '/');
+  const rows = [], bad = [], seen = new Set();
+  const re = /(20\d\d)\s*[\/\-.年]\s*(\d{1,2})\s*[\/\-.月]\s*(\d{1,2})日?\s+(\d{1,2}):(\d{2})\s+[¥￥\\]?\s*([\d,]+)\s*円?/;
+  for (const line of norm.split(/\n/)) {
+    if (!/\d{4}\s*[\/\-.年]/.test(line)) continue;
+    const m = line.match(re);
+    if (!m) { bad.push(line.trim()); continue; }
+    const date = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    const time = `${m[4].padStart(2, '0')}:${m[5]}`;
+    const amount = Number(m[6].replace(/,/g, ''));
+    const key = `${date} ${time} ${amount}`;
+    if (!(amount > 0) || seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ date, time, amount });
+  }
+  rows.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  return { rows, bad };
+}
+// 前回の ETC 精算がいつまでだったか。etc.to を持つ記録、なければ「高速(8/16〜10/11)」のようなタイトルから読む。
+export function lastEtcEnd(items) {
+  let last = '';
+  for (const e of items) {
+    let to = e.etc?.to;
+    if (!to) {
+      const m = (e.title || '').match(/(?:高速|ETC|etc).*?\(\s*\d{1,2}\/\d{1,2}\s*[〜~～\-]\s*(\d{1,2})\/(\d{1,2})\s*\)/);
+      if (!m) continue;
+      const y = Number(e.date.slice(0, 4));
+      to = `${y}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+      if (to > addDays(e.date, 7)) to = `${y - 1}${to.slice(4)}`;
+    }
+    if (to > last) last = to;
+  }
+  return last;
+}
